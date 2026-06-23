@@ -20,7 +20,7 @@
 ```bash
 cd colenio/tools/jira-cli
 uv sync
-uv run jira-cli list --help
+uv run colenio-jira-cli list --help
 ```
 
 ### Via uvx (remote/published)
@@ -28,6 +28,8 @@ uv run jira-cli list --help
 ```bash
 uvx colenio-jira-cli list --project PROJ
 ```
+
+`jira-cli` remains available as a compatibility alias.
 
 ## Setup
 
@@ -57,52 +59,52 @@ JIRA_PROJECT_KEY=PROJ  # Backward-compatible fallback
 
 ```bash
 # Basic listing
-jira-cli list --project PROJ
+colenio-jira-cli list --project PROJ
 
 # With filters
-jira-cli list --project PROJ --status "In Progress" --assignee "john@example.com"
+colenio-jira-cli list --project PROJ --status "In Progress" --assignee "john@example.com"
 
 # With custom JQL
-jira-cli list --project PROJ --jql 'priority = High'
+colenio-jira-cli list --project PROJ --jql 'priority = High'
 
 # Different output formats
-jira-cli list --project PROJ --format json
-jira-cli list --project PROJ --format csv > issues.csv
-jira-cli list --project PROJ --format md
+colenio-jira-cli list --project PROJ --format json
+colenio-jira-cli list --project PROJ --format csv > issues.csv
+colenio-jira-cli list --project PROJ --format md
 ```
 
 ### Search with JQL
 
 ```bash
-jira-cli search 'project = PROJ AND status = "To Do" AND assignee is EMPTY'
-jira-cli search 'text ~ "urgent"' --format json
+colenio-jira-cli search 'project = PROJ AND status = "To Do" AND assignee is EMPTY'
+colenio-jira-cli search 'text ~ "urgent"' --format json
 ```
 
 ### Find by text
 
 ```bash
-jira-cli find --project PROJ "database migration"
-jira-cli find --project PROJ "performance issue" --max-results 100
+colenio-jira-cli find --project PROJ "database migration"
+colenio-jira-cli find --project PROJ "performance issue" --max-results 100
 ```
 
 ### View issue details
 
 ```bash
-jira-cli view PROJ-123
-jira-cli view PROJ-456 --comments
+colenio-jira-cli view PROJ-123
+colenio-jira-cli view PROJ-456 --comments
 ```
 
 ### Assign issue
 
 ```bash
-jira-cli assign PROJ-789 john@example.com
+colenio-jira-cli assign PROJ-789 john@example.com
 ```
 
 ### Transition issue
 
 ```bash
-jira-cli transition PROJ-999 "In Progress" --comment "Starting work"
-jira-cli transition PROJ-999 "Done"
+colenio-jira-cli transition PROJ-999 "In Progress" --comment "Starting work"
+colenio-jira-cli transition PROJ-999 "Done"
 ```
 
 ## Architecture
