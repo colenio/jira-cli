@@ -1,6 +1,7 @@
 """Click CLI commands."""
 
 import os
+import webbrowser
 from typing import Optional
 
 import click
@@ -63,9 +64,9 @@ def _resolve_project(project: Optional[str]) -> str:
 @click.option("--status", "-s", default="", help="Filter by status (e.g. 'To Do')")
 @click.option("--assignee", "-a", default="", help="Filter by assignee")
 @click.option("--label", "-l", default="", help="Filter by label")
-@click.option("--jql", default="", help="Additional JQL conditions (AND appended)")
-@click.option("--max-results", type=int, default=50, show_default=True, help="Max issues to return")
-@click.option("--format", type=click.Choice(["table", "json", "csv", "md"]), default="table", help="Output format")
+@click.option("--jql", "-j", default="", help="Additional JQL conditions (AND appended)")
+@click.option("--max-results", "-m", type=int, default=50, show_default=True, help="Max issues to return")
+@click.option("--format", "-f", type=click.Choice(["table", "json", "csv", "md"]), default="table", help="Output format")
 def list_issues(project: str, status: str, assignee: str, label: str, jql: str, max_results: int, format: str):
     """List issues in a project with optional filters."""
     try:
@@ -104,8 +105,8 @@ def list_issues(project: str, status: str, assignee: str, label: str, jql: str, 
 
 @cli.command(name="search")
 @click.argument("jql")
-@click.option("--max-results", type=int, default=50, show_default=True)
-@click.option("--format", type=click.Choice(["table", "json", "csv", "md"]), default="table")
+@click.option("--max-results", "-m", type=int, default=50, show_default=True)
+@click.option("--format", "-f", type=click.Choice(["table", "json", "csv", "md"]), default="table")
 def search(jql: str, max_results: int, format: str):
     """Search issues using custom JQL."""
     try:
@@ -137,8 +138,8 @@ def search(jql: str, max_results: int, format: str):
 @cli.command(name="find")
 @click.option("--project", "-p", default="", help="Jira project key; defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
 @click.argument("text")
-@click.option("--max-results", type=int, default=50, show_default=True)
-@click.option("--format", type=click.Choice(["table", "json", "csv"]), default="table")
+@click.option("--max-results", "-m", type=int, default=50, show_default=True)
+@click.option("--format", "-f", type=click.Choice(["table", "json", "csv"]), default="table")
 def find(project: str, text: str, max_results: int, format: str):
     """Find issues by text in summary/description."""
     try:
@@ -167,8 +168,9 @@ def find(project: str, text: str, max_results: int, format: str):
 
 @cli.command(name="view")
 @click.argument("key")
-@click.option("--comments", is_flag=True, help="Include issue comments")
-def view(key: str, comments: bool):
+@click.option("--comments", "-c", is_flag=True, help="Include issue comments")
+@click.option("--web", "-w", is_flag=True, help="Show issue URL and open in browser")
+def view(key: str, comments: bool, web: bool):
     """View issue details."""
     try:
         client = _get_jira_client()
@@ -176,6 +178,7 @@ def view(key: str, comments: bool):
             key,
             fields=["key", "summary", "description", "status", "priority", "assignee", "labels", "comment"],
         )
+        issue_url = issue.get("self", "").replace("/rest/api/3/issue", "/browse")
 
         fields = issue.get("fields", {})
         
@@ -209,6 +212,12 @@ def view(key: str, comments: bool):
             else:
                 click.echo("\n💬 No comments")
 
+        if web and issue_url:
+            click.echo(f"\n🌐 URL: {issue_url}")
+            opened = webbrowser.open(issue_url)
+            if not opened:
+                click.echo("⚠️ Browser could not be opened automatically")
+
         click.echo()
 
     except SystemExit:
@@ -221,7 +230,7 @@ def view(key: str, comments: bool):
 @cli.command(name="assign")
 @click.argument("key")
 @click.argument("assignee")
-@click.option("--comment", default="", help="Optional transition comment")
+@click.option("--comment", "-c", default="", help="Optional transition comment")
 def assign_issue(key: str, assignee: str, comment: str):
     """Assign issue to user."""
     try:
@@ -239,7 +248,7 @@ def assign_issue(key: str, assignee: str, comment: str):
 @cli.command(name="transition")
 @click.argument("key")
 @click.argument("transition_id")
-@click.option("--comment", default="", help="Optional transition comment")
+@click.option("--comment", "-c", default="", help="Optional transition comment")
 def transition(key: str, transition_id: str, comment: str):
     """Transition issue to new status."""
     try:
