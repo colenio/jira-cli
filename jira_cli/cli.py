@@ -13,7 +13,7 @@ from .query import JiraQuery
 from .render import JiraRenderer
 
 
-@click.group()
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(version=__version__)
 def cli():
     """Modular Jira CLI — list, search, view, and manage Jira issues."""
@@ -178,7 +178,7 @@ def view(key: str, comments: bool, web: bool):
             key,
             fields=["key", "summary", "description", "status", "priority", "assignee", "labels", "comment"],
         )
-        issue_url = issue.get("self", "").replace("/rest/api/3/issue", "/browse")
+        issue_url = f"{client.base_url.rstrip('/')}/browse/{issue['key']}"
 
         fields = issue.get("fields", {})
         
