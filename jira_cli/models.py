@@ -26,6 +26,9 @@ class JiraIssueField(BaseModel):
     priority: Optional[dict | str] = None
     assignee: Optional[dict] = None
     reporter: Optional[dict] = None
+    issuetype: Optional[dict | str] = None
+    parent: Optional[dict] = None
+    subtasks: list[dict] = []
     labels: list[str] = []
     created: Optional[str] = None
     updated: Optional[str] = None
@@ -63,11 +66,30 @@ class IssueRow(BaseModel):
 
     key: str
     summary: str
+    issue_type: str = ""
+    issue_type_emoji: str = ""
     status: str = ""
     priority: str = ""
     assignee: str = ""
     updated: str = ""
     labels: str = ""
+    parent_key: str = ""
+    child_keys: list[str] = Field(default_factory=list)
+
+    @staticmethod
+    def issue_type_to_emoji(issue_type: str) -> str:
+        """Map common Jira issue types to emoji."""
+        normalized = (issue_type or "").strip().lower()
+        mapping = {
+            "epic": "🚀",
+            "story": "📘",
+            "bug": "🐞",
+            "task": "✅",
+            "sub-task": "🧩",
+            "subtask": "🧩",
+            "incident": "🔥",
+        }
+        return mapping.get(normalized, "📄")
 
     @staticmethod
     def from_jira_issue(issue: JiraIssue) -> "IssueRow":
@@ -96,13 +118,30 @@ class IssueRow(BaseModel):
             )
         
         labels = ", ".join(fields.labels) if fields.labels else ""
+        issue_type = ""
+        if isinstance(fields.issuetype, dict):
+            issue_type = fields.issuetype.get("name", "")
+        elif isinstance(fields.issuetype, str):
+            issue_type = fields.issuetype
+
+        parent_key = ""
+        if fields.parent:
+            parent_key = fields.parent.get("key", "")
+
+        child_keys: list[str] = []
+        if fields.subtasks:
+            child_keys = [subtask.get("key", "") for subtask in fields.subtasks if subtask.get("key")]
         
         return IssueRow(
             key=issue.key,
             summary=fields.summary,
+            issue_type=issue_type,
+            issue_type_emoji=IssueRow.issue_type_to_emoji(issue_type),
             status=status,
             priority=priority,
             assignee=assignee,
             updated=fields.updated or "",
             labels=labels,
+            parent_key=parent_key,
+            child_keys=child_keys,
         )

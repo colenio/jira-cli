@@ -52,7 +52,18 @@ class JiraQuery:
 
         # Default fields to fetch
         if not fields:
-            fields = ["key", "summary", "status", "priority", "assignee", "updated", "labels"]
+            fields = [
+                "key",
+                "summary",
+                "issuetype",
+                "parent",
+                "subtasks",
+                "status",
+                "priority",
+                "assignee",
+                "updated",
+                "labels",
+            ]
 
         result = self.client.search(jql, fields=fields, max_results=max_results)
 
@@ -71,7 +82,18 @@ class JiraQuery:
             List of IssueRow
         """
         if not fields:
-            fields = ["key", "summary", "status", "priority", "assignee", "updated", "labels"]
+            fields = [
+                "key",
+                "summary",
+                "issuetype",
+                "parent",
+                "subtasks",
+                "status",
+                "priority",
+                "assignee",
+                "updated",
+                "labels",
+            ]
 
         result = self.client.search(jql, fields=fields, max_results=max_results)
         return [IssueRow.from_jira_issue(issue) for issue in result.issues]

@@ -107,22 +107,106 @@ colenio-jira-cli transition PROJ-999 "In Progress" --comment "Starting work"
 colenio-jira-cli transition PROJ-999 "Done"
 ```
 
-## Architecture
+### Interactive TUI (Terminal User Interface)
 
-- **`client.py`**: `JiraClient` class for REST API calls, auth, and endpoints
-- **`query.py`**: `JiraQuery` class for JQL building and search logic
-- **`render.py`**: `JiraRenderer` class for output formatting (table, JSON, CSV, Markdown)
-- **`models.py`**: Pydantic models for Jira structures (`JiraIssue`, `JiraSearchResult`, `IssueRow`)
-- **`dotenv.py`**: `DotEnv` class for robust `.env`/`local.env` loading
-- **`cli.py`**: Click CLI commands (list, search, find, view, assign, transition)
+Launch an interactive k9s-style interface for managing Jira issues:
 
-All code uses proper classes, no helper functions. Follows informix-migration patterns.
+```bash
+# Basic TUI launch
+colenio-jira-cli tui --project PROJ
+
+# TUI will load default project from JIRA_PROJECT env if available
+colenio-jira-cli tui
+```
+
+**Keyboard Shortcuts in TUI:**
+
+| Key       | Action                             |
+| --------- | ---------------------------------- |
+| `↑` / `↓` | Navigate issues up/down            |
+| `o`       | Open selected issue in browser     |
+| `p`       | Reset source to project            |
+| `f`       | Find by text (summary/description) |
+| `j`       | Run custom JQL query               |
+| `t`       | Transition selected issue          |
+| `a`       | Assign selected issue              |
+| `u`       | Drill up to parent issue           |
+| `d`       | Drill down to child issues         |
+| `Enter`   | Execute active query/input         |
+| `r`       | Refresh issue list                 |
+| `/`       | Focus live filter                  |
+| `Esc`     | Close input or reset source        |
+| `?`       | Show help                          |
+| `q`       | Quit TUI                           |
+
+Transition input format in TUI:
+
+- `t` opens transition input for the selected issue.
+- Enter either transition ID or transition name.
+- Optional comment: `<transition> | <comment>`
+
+**Installation (TUI included by default):**
+
+```bash
+# Install dependencies
+uv sync
+
+# Then use
+uv run colenio-jira-cli tui --project PROJ
+```
+
+Or via `uvx`:
+
+```bash
+uvx --python 3.11 colenio-jira-cli tui --project PROJ
+```
+
+## Running Without uvx
+
+You can run the CLI and TUI without `uvx` in two common ways.
+
+### Option 1: Local repo via uv run
+
+```bash
+cd colenio/tools/jira-cli
+uv sync
+uv run colenio-jira-cli tui --project PROJ
+```
+
+### Option 2: Virtualenv + pip (no uv required)
+
+```bash
+python -m venv .venv
+# Linux/macOS: source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install colenio-jira-cli
+colenio-jira-cli tui --project PROJ
+```
+
+### Option 3: pip --user (no venv)
+
+Useful for locked-down environments where virtual environments are not allowed.
+
+```bash
+python -m pip install --user -U pip
+python -m pip install --user colenio-jira-cli
+colenio-jira-cli tui --project PROJ
+```
+
+If the command is not found on Windows, ensure your user Scripts path is in `PATH`:
+
+```powershell
+$scripts = Join-Path (py -m site --user-base) "Scripts"
+$env:PATH += ";$scripts"
+# Or restart the terminal after updating PATH permanently
+```
 
 ## Development
 
 ```bash
 # Install dev dependencies
-uv sync --all-groups
+uv sync --extra dev
 
 # Run tests
 uv run pytest
@@ -132,15 +216,10 @@ uv run black jira_cli
 uv run ruff check jira_cli
 ```
 
-## Distribution
+## Additional Docs
 
-This tool is designed for publishing via uvx (like `helmrelease-verifier`):
-
-1. Push to GitHub at `colenio/jira-cli`
-2. Configure PyPI Trusted Publisher for this repository
-3. Tag with version: `git tag v0.1.0` and push tag (`git push origin v0.1.0`)
-4. GitHub Action `.github/workflows/release.yml` builds, tests, and publishes to PyPI
-5. Package can be invoked anywhere with: `uvx colenio-jira-cli list --project PROJ`
+- [docs/architecture.md](docs/architecture.md)
+- [docs/distribution.md](docs/distribution.md)
 
 ## PowerShell Integration
 

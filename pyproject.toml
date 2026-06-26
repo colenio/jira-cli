@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "colenio-jira-cli"
-version = "0.1.6"
+version = "0.2.0"
 description = "Modular Jira CLI tool for issue listing, filtering, and management"
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,13 @@ dependencies = [
     "pydantic>=2.0.0",
     "rich>=13.0.0",
     "tabulate>=0.9.0",
+    "textual>=0.40.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/colenio/jira-cli"
+Repository = "https://github.com/colenio/jira-cli"
+Issues = "https://github.com/colenio/jira-cli/issues"
 
 [project.optional-dependencies]
 dev = [

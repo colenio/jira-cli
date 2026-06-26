@@ -126,6 +126,22 @@ class JiraClient:
 
         self._jira.transition_issue(key, transition_id, comment=comment or None)
 
+    def get_transitions(self, key: str) -> list[dict]:
+        """
+        Fetch available transitions for an issue.
+
+        Args:
+            key: Issue key
+
+        Returns:
+            List of transition dicts (id, name, to, ...)
+        """
+        if self.dry_run:
+            print(f"[dry-run] GET /issues/{key}/transitions")
+            return []
+
+        return self._jira.transitions(key)
+
     def assign_issue(self, key: str, assignee_key: str) -> None:
         """
         Assign issue to user.

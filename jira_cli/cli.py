@@ -263,6 +263,28 @@ def transition(key: str, transition_id: str, comment: str):
         raise SystemExit(1)
 
 
+@cli.command(name="tui")
+@click.option("--project", "-p", default="", help="Jira project key; defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
+def launch_tui(project: str):
+    """Launch interactive TUI (Terminal User Interface) for Jira issue management."""
+    try:
+        from .tui.app import run_tui
+        
+        client = _get_jira_client()
+        project_key = _resolve_project(project)
+        run_tui(client, project_key)
+
+    except ImportError:
+        click.echo("❌ TUI module could not be loaded (installation may be incomplete).", err=True)
+        click.echo("Run: uv sync", err=True)
+        raise SystemExit(1)
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        raise SystemExit(1)
+
+
 def main():
     """Main entry point."""
     cli()
