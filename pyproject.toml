@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "colenio-jira-cli"
-version = "0.2.0"
+version = "0.2.1"
 description = "Modular Jira CLI tool for issue listing, filtering, and management"
 readme = "README.md"
 license = "MIT"
@@ -29,12 +29,21 @@ Issues = "https://github.com/colenio/jira-cli/issues"
 dev = [
     "pytest>=8.0.0",
     "black>=24.0.0",
+]
+local-dev = [
     "ruff>=0.2.0",
+    "radon>=6.0.1",
+    "pylint>=3.2.0",
 ]
 
 [project.scripts]
 jira-cli = "jira_cli.cli:main"
 colenio-jira-cli = "jira_cli.cli:main"
+jira-cli-ruff = "jira_cli.devtools:run_ruff"
+jira-cli-radon = "jira_cli.devtools:run_radon"
+jira-cli-pylint = "jira_cli.devtools:run_pylint"
+jira-cli-check = "jira_cli.devtools:run_qa"
+jira-cli-qa = "jira_cli.devtools:run_qa"
 
 [tool.hatch.build.targets.wheel]
 packages = ["jira_cli"]
@@ -46,3 +55,16 @@ target-version = ["py311"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+
+[tool.pylint.main]
+py-version = "3.11"
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint."messages control"]
+disable = [
+    "missing-class-docstring",
+    "protected-access",
+    "attribute-defined-outside-init",
+]

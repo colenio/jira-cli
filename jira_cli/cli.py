@@ -20,7 +20,11 @@ def cli():
     pass
 
 
-def _get_jira_client(base_url: Optional[str] = None, email: Optional[str] = None, api_token: Optional[str] = None) -> JiraClient:
+def _get_jira_client(
+    base_url: Optional[str] = None,
+    email: Optional[str] = None,
+    api_token: Optional[str] = None,
+) -> JiraClient:
     """Load Jira credentials from env/dotenv and create client."""
     # Load from .env or local.env first (local.env takes precedence)
     env = DotEnv(verbose=False)
@@ -60,13 +64,24 @@ def _resolve_project(project: Optional[str]) -> str:
 
 
 @cli.command(name="list")
-@click.option("--project", "-p", default="", help="Jira project key (e.g. PROJ); defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
+@click.option(
+    "--project",
+    "-p",
+    default="",
+    help="Jira project key (e.g. PROJ); defaults to JIRA_PROJECT/JIRA_PROJECT_KEY",
+)
 @click.option("--status", "-s", default="", help="Filter by status (e.g. 'To Do')")
 @click.option("--assignee", "-a", default="", help="Filter by assignee")
 @click.option("--label", "-l", default="", help="Filter by label")
 @click.option("--jql", "-j", default="", help="Additional JQL conditions (AND appended)")
 @click.option("--max-results", "-m", type=int, default=50, show_default=True, help="Max issues to return")
-@click.option("--format", "-f", type=click.Choice(["table", "json", "csv", "md"]), default="table", help="Output format")
+@click.option(
+    "--format",
+    "-f",
+    type=click.Choice(["table", "json", "csv", "md"]),
+    default="table",
+    help="Output format",
+)
 def list_issues(project: str, status: str, assignee: str, label: str, jql: str, max_results: int, format: str):
     """List issues in a project with optional filters."""
     try:
@@ -192,7 +207,7 @@ def view(key: str, comments: bool, web: bool):
         
         description = fields.get("description")
         if description:
-            click.echo(f"\n📝 Description:")
+            click.echo("\n📝 Description:")
             if isinstance(description, dict):  # Rich text format
                 click.echo("  (Rich text format)")
             else:

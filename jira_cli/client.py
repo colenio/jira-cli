@@ -1,6 +1,7 @@
 """Jira API client."""
 
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from jira import JIRA
 
@@ -155,3 +156,29 @@ class JiraClient:
             return
 
         self._jira.assign_issue(key, assignee_key)
+
+    def add_comment(self, key: str, comment: str | dict[str, Any], use_adf: bool = False) -> None:
+        """
+        Add comment to an issue.
+
+        Args:
+            key: Issue key
+            comment: Comment text or ADF document
+            use_adf: If True, send raw ADF JSON body
+        """
+        if self.dry_run:
+            mode = "adf" if use_adf else "plain"
+            print(f"[dry-run] POST /issues/{key}/comments | mode={mode}")
+            return
+
+        if use_adf:
+            if not isinstance(comment, dict):
+                raise ValueError("ADF comment must be a JSON object")
+            url = f"{self.base_url}/rest/api/3/issue/{key}/comment"
+            response = self._jira._session.post(url, json={"body": comment})
+            response.raise_for_status()
+            return
+
+        if isinstance(comment, dict):
+            comment = json.dumps(comment, ensure_ascii=False)
+        self._jira.add_comment(key, comment)

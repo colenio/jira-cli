@@ -130,6 +130,9 @@ colenio-jira-cli tui
 | `j`       | Run custom JQL query               |
 | `t`       | Transition selected issue          |
 | `a`       | Assign selected issue              |
+| `c`       | Add comment (plain/md/adf)         |
+| `n`       | Next comment on selected issue     |
+| `b`       | Previous comment on selected issue |
 | `u`       | Drill up to parent issue           |
 | `d`       | Drill down to child issues         |
 | `Enter`   | Execute active query/input         |
@@ -144,6 +147,14 @@ Transition input format in TUI:
 - `t` opens transition input for the selected issue.
 - Enter either transition ID or transition name.
 - Optional comment: `<transition> | <comment>`
+
+Comment input format in TUI:
+
+- `c` opens comment input for the selected issue.
+- Supported formats:
+  - `plain:<text>` or just `<text>`
+  - `md:<markdown>` (lightweight markdown validation)
+  - `adf:<json>` (ADF JSON parse + structure validation)
 
 **Installation (TUI included by default):**
 
@@ -206,7 +217,7 @@ $env:PATH += ";$scripts"
 
 ```bash
 # Install dev dependencies
-uv sync --extra dev
+uv sync --extra dev --extra local-dev
 
 # Run tests
 uv run pytest
@@ -214,6 +225,13 @@ uv run pytest
 # Format and lint
 uv run black jira_cli
 uv run ruff check jira_cli
+
+# Run standardized local QA scripts
+uv run jira-cli-ruff
+uv run jira-cli-radon
+uv run jira-cli-pylint
+uv run jira-cli-check
+uv run jira-cli-qa
 ```
 
 ## Additional Docs

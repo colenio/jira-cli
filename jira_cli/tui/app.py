@@ -4,78 +4,16 @@ import webbrowser
 from typing import Literal
 
 from textual.app import ComposeResult, App
-from textual.widgets import Static, Label, DataTable, Footer, Header, Input
+from textual.widgets import Label, DataTable, Footer, Header, Input
 from textual.binding import Binding
 
 from jira_cli.client import JiraClient
-from jira_cli.query import JiraQuery
 from jira_cli.models import IssueRow
-
-
-class IssueTableWidget(DataTable):
-    """Interactive table displaying Jira issues."""
-
-    def __init__(self, issues: list[IssueRow], **kwargs):
-        super().__init__(**kwargs)
-        self.issues = issues
-
-    def on_mount(self) -> None:
-        """Configure the table on mount."""
-        self.add_columns("Type", "Key", "Summary", "Status", "Assignee", "Priority")
-        self.cursor_type = "row"
-        
-        for issue in self.issues:
-            self.add_row(
-                f"{issue.issue_type_emoji} {issue.issue_type}".strip(),
-                issue.key,
-                issue.summary[:46] if len(issue.summary) > 46 else issue.summary,
-                issue.status or "—",
-                issue.assignee or "—",
-                issue.priority or "—",
-                key=issue.key,
-            )
-
-    def get_selected_issue(self) -> IssueRow | None:
-        """Get the currently selected issue."""
-        if self.cursor_row >= 0 and self.cursor_row < len(self.issues):
-            return self.issues[self.cursor_row]
-        return None
-
-
-class IssueDetailWidget(Static):
-    """Display details of the selected issue."""
-
-    DEFAULT_CSS = """
-    IssueDetailWidget {
-        border: solid $accent;
-        height: 8;
-        color: $text;
-    }
-    """
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.issue = None
-
-    def render(self) -> str:
-        """Render the issue details."""
-        if not self.issue:
-            return "[dim]Select an issue to view details[/dim]"
-
-        return (
-            f"[bold cyan]{self.issue.key}[/bold cyan] — {self.issue.summary}\n"
-            f"[dim]Type:[/dim] {self.issue.issue_type_emoji} {self.issue.issue_type or '—'} | "
-            f"[dim]Status:[/dim] {self.issue.status or '—'} | "
-            f"[dim]Assignee:[/dim] {self.issue.assignee or 'Unassigned'} | "
-            f"[dim]Priority:[/dim] {self.issue.priority or '—'}\n"
-            f"[dim]Parent:[/dim] {self.issue.parent_key or '—'} | "
-            f"[dim]Children:[/dim] {', '.join(self.issue.child_keys) if self.issue.child_keys else '—'}"
-        )
-
-    def update_issue(self, issue: IssueRow | None) -> None:
-        """Update displayed issue."""
-        self.issue = issue
-        self.update(self.render())
+from jira_cli.query import JiraQuery
+from jira_cli.tui.features.comment import JiraCommentFeature
+from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
+from jira_cli.tui.features.query.service import QueryMode, build_query_labels, filter_issues, run_remote_query
+from jira_cli.tui.features.workflow import JiraWorkflowFeature
 
 
 class JiraApp(App):
@@ -89,6 +27,9 @@ class JiraApp(App):
         Binding("j", "focus_jql", "JQL", show=True),
         Binding("t", "transition", "Transition", show=True),
         Binding("a", "assign", "Assign", show=True),
+        Binding("c", "comment", "Comment", show=True),
+        Binding("n", "next_comment", "NextComment", show=True),
+        Binding("b", "prev_comment", "PrevComment", show=True),
         Binding("u", "drill_up", "Parent", show=True),
         Binding("d", "drill_down", "Children", show=True),
         Binding("r", "refresh", "Refresh", show=True),
@@ -134,13 +75,15 @@ class JiraApp(App):
         self.all_issues = issues
         self.issues = issues
         self.query = JiraQuery(client)
-        self.query_mode: Literal["project", "find", "jql"] = "project"
+        self.query_mode: QueryMode = "project"
         self.query_expression = ""
         self.last_find_expression = ""
         self.last_jql_expression = ""
-        self.input_mode: Literal["find", "jql", "transition", "assign", "none"] = "none"
+        self.input_mode: Literal["find", "jql", "transition", "assign", "comment", "none"] = "none"
         self.pending_issue_key = ""
         self.transition_choice_map: dict[str, str] = {}
+        self.comment_feature = JiraCommentFeature(client)
+        self.workflow_feature = JiraWorkflowFeature(client)
 
     def compose(self) -> ComposeResult:
         """Create the app layout."""
@@ -170,27 +113,23 @@ class JiraApp(App):
 
     def _update_query_context(self) -> None:
         """Render active remote query context."""
+        mode_text, source_text = build_query_labels(self.project_key, self.query_mode, self.query_expression)
+
         mode_label = self.query_one("#mode_context", Label)
-        mode_label.update(f"MODE: {self.query_mode.upper()}")
+        mode_label.update(mode_text)
 
         context = self.query_one("#query_context", Label)
-        if self.query_mode == "project":
-            context.update(f"Source: project={self.project_key}")
-        elif self.query_mode == "find":
-            context.update(f"Source: find \"{self.query_expression}\"")
-        else:
-            snippet = self.query_expression.strip().replace("\n", " ")
-            if len(snippet) > 80:
-                snippet = f"{snippet[:77]}..."
-            context.update(f"Source: jql {snippet}")
+        context.update(source_text)
 
     def _run_remote_query(self) -> list[IssueRow]:
         """Run currently selected remote query source."""
-        if self.query_mode == "find":
-            return self.query.find_by_text(self.project_key, self.query_expression, max_results=100)
-        if self.query_mode == "jql":
-            return self.query.search_custom_jql(self.query_expression, max_results=100)
-        return self.query.search_project(project_key=self.project_key, max_results=100)
+        return run_remote_query(
+            query=self.query,
+            project_key=self.project_key,
+            query_mode=self.query_mode,
+            query_expression=self.query_expression,
+            max_results=100,
+        )
 
     def _selected_issue(self) -> IssueRow | None:
         """Return currently selected issue in table."""
@@ -245,39 +184,13 @@ class JiraApp(App):
     def _render_issue_table(self, rows: list[IssueRow], preferred_key: str | None = None) -> None:
         """Render rows into table and keep selection if possible."""
         table = self.query_one("#issue_table", IssueTableWidget)
-        table.issues = rows
-        table.clear()
-
-        for issue in rows:
-            table.add_row(
-                f"{issue.issue_type_emoji} {issue.issue_type}".strip(),
-                issue.key,
-                issue.summary[:46] if len(issue.summary) > 46 else issue.summary,
-                issue.status or "—",
-                issue.assignee or "—",
-                issue.priority or "—",
-                key=issue.key,
-            )
-
-        if not rows:
+        selected_issue = table.replace_rows(rows, preferred_key=preferred_key)
+        if not selected_issue:
             detail = self.query_one("#issue_detail", IssueDetailWidget)
             detail.update_issue(None)
             return
 
-        selected_index = 0
-        if preferred_key:
-            for index, issue in enumerate(rows):
-                if issue.key == preferred_key:
-                    selected_index = index
-                    break
-
-        try:
-            table.move_cursor(row=selected_index, column=0)
-        except Exception:
-            # Fallback for Textual versions where move_cursor may differ.
-            pass
-
-        self.update_issue_detail(rows[selected_index])
+        self.update_issue_detail(selected_issue)
 
     def _apply_filter(self, filter_text: str) -> None:
         """Apply in-memory filter to currently loaded issues."""
@@ -285,19 +198,7 @@ class JiraApp(App):
         current = table.get_selected_issue()
         preferred_key = current.key if current else None
 
-        query_text = (filter_text or "").strip().lower()
-        if not query_text:
-            filtered = self.all_issues
-        else:
-            filtered = [
-                issue
-                for issue in self.all_issues
-                if query_text in issue.key.lower()
-                or query_text in issue.summary.lower()
-                or query_text in (issue.status or "").lower()
-                or query_text in (issue.assignee or "").lower()
-                or query_text in (issue.priority or "").lower()
-            ]
+        filtered = filter_issues(self.all_issues, filter_text)
 
         self.issues = filtered
         self._render_issue_table(filtered, preferred_key=preferred_key)
@@ -307,6 +208,83 @@ class JiraApp(App):
         if event.input.id != "filter_input":
             return
         self._apply_filter(event.value)
+
+    def _apply_loaded_rows(self, rows: list[IssueRow], success_message: str) -> None:
+        """Update issue store and refresh table/detail with current local filter."""
+        self.all_issues = rows
+        self._update_query_context()
+        filter_input = self.query_one("#filter_input", Input)
+        self._apply_filter(filter_input.value)
+        self.notify(success_message)
+
+    def _submit_find(self, expression: str) -> None:
+        """Handle submitted input in find mode."""
+        self.query_mode = "find"
+        self.query_expression = expression
+        self.last_find_expression = expression
+        rows = self._run_remote_query()
+        self._apply_loaded_rows(rows, f"Loaded {len(rows)} issues")
+
+    def _submit_jql(self, expression: str) -> None:
+        """Handle submitted input in jql mode."""
+        self.query_mode = "jql"
+        self.query_expression = expression
+        self.last_jql_expression = expression
+        rows = self._run_remote_query()
+        self._apply_loaded_rows(rows, f"Loaded {len(rows)} issues")
+
+    def _submit_transition(self, expression: str) -> None:
+        """Handle submitted transition command."""
+        try:
+            message = self.workflow_feature.submit_transition_expression(
+                self.pending_issue_key,
+                expression,
+                self.transition_choice_map,
+            )
+        except ValueError as value_error:
+            self.notify(str(value_error), severity="error")
+            return
+
+        self.notify(message)
+        self.action_refresh()
+
+    def _submit_assign(self, expression: str) -> None:
+        """Handle submitted assign command."""
+        message = self.workflow_feature.submit_assign_expression(self.pending_issue_key, expression)
+        self.notify(message)
+        self.action_refresh()
+
+    def _submit_comment(self, expression: str) -> None:
+        """Handle submitted comment input."""
+        try:
+            message = self.comment_feature.submit_comment_expression(self.pending_issue_key, expression)
+        except ValueError as value_error:
+            self.notify(str(value_error), severity="error")
+            return
+
+        self.notify(message)
+        self.comment_feature.invalidate_issue(self.pending_issue_key)
+        self.action_refresh()
+
+    def _submit_by_mode(self, expression: str) -> None:
+        """Dispatch query input submission to active input mode handler."""
+        if self.input_mode == "find":
+            self._submit_find(expression)
+            return
+        if self.input_mode == "jql":
+            self._submit_jql(expression)
+            return
+        if self.input_mode == "transition":
+            self._submit_transition(expression)
+            return
+        if self.input_mode == "assign":
+            self._submit_assign(expression)
+            return
+        if self.input_mode == "comment":
+            self._submit_comment(expression)
+            return
+
+        self.notify("No active input mode", severity="warning")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Run remote query when query input is submitted."""
@@ -318,50 +296,10 @@ class JiraApp(App):
             self.notify("Query text is empty", severity="warning")
             return
 
-        query_input = self.query_one("#query_input", Input)
         self._hide_query_input()
 
         try:
-            if self.input_mode == "find":
-                self.query_mode = "find"
-                self.query_expression = expression
-                self.last_find_expression = expression
-                rows = self._run_remote_query()
-                self.all_issues = rows
-                self._update_query_context()
-                filter_input = self.query_one("#filter_input", Input)
-                self._apply_filter(filter_input.value)
-                self.notify(f"Loaded {len(rows)} issues")
-            elif self.input_mode == "jql":
-                self.query_mode = "jql"
-                self.query_expression = expression
-                self.last_jql_expression = expression
-                rows = self._run_remote_query()
-                self.all_issues = rows
-                self._update_query_context()
-                filter_input = self.query_one("#filter_input", Input)
-                self._apply_filter(filter_input.value)
-                self.notify(f"Loaded {len(rows)} issues")
-            elif self.input_mode == "transition":
-                transition_input = expression
-                comment = ""
-                if "|" in expression:
-                    left, right = expression.split("|", 1)
-                    transition_input = left.strip()
-                    comment = right.strip()
-                transition_id = self.transition_choice_map.get(transition_input)
-                if not transition_id:
-                    transition_id = self.transition_choice_map.get(transition_input.lower())
-                if not transition_id:
-                    self.notify("Unknown transition. Use shown ID or exact name.", severity="error")
-                    return
-                self.client.transition_issue(self.pending_issue_key, transition_id, comment=comment or None)
-                self.notify(f"Transitioned {self.pending_issue_key}")
-                self.action_refresh()
-            elif self.input_mode == "assign":
-                self.client.assign_issue(self.pending_issue_key, expression)
-                self.notify(f"Assigned {self.pending_issue_key} to {expression}")
-                self.action_refresh()
+            self._submit_by_mode(expression)
             self.input_mode = "none"
         except Exception as e:
             self.notify(f"Query failed: {e}", severity="error")
@@ -387,50 +325,77 @@ class JiraApp(App):
     def action_transition(self) -> None:
         """Prompt for transition ID or name and execute transition."""
         issue = self._selected_issue()
-        if not issue:
-            self.notify("No issue selected", severity="warning")
-            return
-
         try:
-            transitions = self.client.get_transitions(issue.key)
+            context = self.workflow_feature.prepare_transition_action(issue)
+        except ValueError as value_error:
+            self.notify(str(value_error), severity="warning")
+            return
         except Exception as e:
             self.notify(f"Cannot load transitions: {e}", severity="error")
             return
 
-        if not transitions:
-            self.notify(f"No transitions available for {issue.key}", severity="warning")
-            return
-
-        self.pending_issue_key = issue.key
-        self.input_mode = "transition"
+        self.pending_issue_key = context.issue_key
+        self.input_mode = context.input_mode
         mode_label = self.query_one("#mode_context", Label)
-        mode_label.update("MODE: TRANSITION (INPUT)")
-        self.transition_choice_map = {}
-        transition_labels: list[str] = []
-        for transition in transitions:
-            transition_id = str(transition.get("id", "")).strip()
-            transition_name = str(transition.get("name", "")).strip()
-            if not transition_id:
-                continue
-            self.transition_choice_map[transition_id] = transition_id
-            if transition_name:
-                self.transition_choice_map[transition_name.lower()] = transition_id
-            transition_labels.append(f"{transition_id}:{transition_name}")
+        mode_label.update(context.mode_label)
+        self.transition_choice_map = context.choice_map
 
-        self.notify("Transitions: " + " | ".join(transition_labels), timeout=8)
-        self._show_query_input("Transition ID or name; optional comment with: <transition> | <comment>")
+        self.notify(context.notice, timeout=8)
+        self._show_query_input(context.placeholder)
 
     def action_assign(self) -> None:
         """Prompt for assignee and execute assignment."""
         issue = self._selected_issue()
+        try:
+            context = self.workflow_feature.prepare_assign_action(issue)
+        except ValueError as value_error:
+            self.notify(str(value_error), severity="warning")
+            return
+
+        self.pending_issue_key = context.issue_key
+        self.input_mode = context.input_mode
+        mode_label = self.query_one("#mode_context", Label)
+        mode_label.update(context.mode_label)
+        self._show_query_input(context.placeholder)
+
+    def action_comment(self) -> None:
+        """Prompt for comment and execute submission with validation."""
+        issue = self._selected_issue()
+        try:
+            context = self.comment_feature.prepare_comment_action(issue)
+        except ValueError as value_error:
+            self.notify(str(value_error), severity="warning")
+            return
+
+        self.pending_issue_key = context.issue_key
+        self.input_mode = context.input_mode
+        mode_label = self.query_one("#mode_context", Label)
+        mode_label.update(context.mode_label)
+        self._show_query_input(context.placeholder)
+
+    def action_next_comment(self) -> None:
+        """Select next comment for the selected issue."""
+        issue = self._selected_issue()
         if not issue:
             self.notify("No issue selected", severity="warning")
             return
-        self.pending_issue_key = issue.key
-        self.input_mode = "assign"
-        mode_label = self.query_one("#mode_context", Label)
-        mode_label.update("MODE: ASSIGN (INPUT)")
-        self._show_query_input("Assignee (email/account) and press Enter")
+        moved = self.comment_feature.next_comment(issue.key)
+        if not moved:
+            self.notify("No comments on this issue", severity="warning")
+            return
+        self.update_issue_detail(issue)
+
+    def action_prev_comment(self) -> None:
+        """Select previous comment for the selected issue."""
+        issue = self._selected_issue()
+        if not issue:
+            self.notify("No issue selected", severity="warning")
+            return
+        moved = self.comment_feature.prev_comment(issue.key)
+        if not moved:
+            self.notify("No comments on this issue", severity="warning")
+            return
+        self.update_issue_detail(issue)
 
     def action_drill_up(self) -> None:
         """Drill up to parent issue."""
@@ -516,8 +481,9 @@ class JiraApp(App):
 
     def update_issue_detail(self, issue: IssueRow) -> None:
         """Update the detail view with selected issue."""
+        comment_text, comment_position = self.comment_feature.current_view(issue.key)
         detail = self.query_one("#issue_detail", IssueDetailWidget)
-        detail.update_issue(issue)
+        detail.update_issue(issue, comment_text=comment_text, comment_position=comment_position)
 
     def action_refresh(self) -> None:
         """Refresh the issue list."""
@@ -556,6 +522,9 @@ class JiraApp(App):
             "[cyan]Enter[/cyan]    Execute active query input\n"
             "[cyan]t[/cyan]        Transition selected issue\n"
             "[cyan]a[/cyan]        Assign selected issue\n"
+            "[cyan]c[/cyan]        Add comment (plain/md/adf)\n"
+            "[cyan]n[/cyan]        Next comment\n"
+            "[cyan]b[/cyan]        Previous comment\n"
             "[cyan]u[/cyan]        Drill up to parent issue\n"
             "[cyan]d[/cyan]        Drill down to child issues\n"
             "[cyan]Esc[/cyan]      Close input or reset source\n"
