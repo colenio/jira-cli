@@ -1,5 +1,7 @@
 # Jira CLI
 
+**Think github-cli but for Jira.**
+
 > Modular, class-based Jira command-line tool for issue listing, searching, and management.
 
 ## Features
@@ -10,6 +12,10 @@
 - **View** issue details with comments
 - **Assign** issues to users
 - **Transition** issues to new status
+- **Create** issues with title/body/labels/assignee
+- **Comment** on issues (plain, markdown, or ADF JSON)
+- **Edit** issues (title/body/labels/assignee/priority/type)
+- **Close/Reopen** issues via workflow transitions
 - **Multiple output formats**: table, JSON, CSV, Markdown
 - **dotenv support**: Load credentials from `.env` or `local.env` in CWD or parent directories
 
@@ -20,16 +26,16 @@
 ```bash
 cd colenio/tools/jira-cli
 uv sync
-uv run colenio-jira-cli list --help
+uv run colenio-jira-cli issue --help
 ```
 
 ### Via uvx (remote/published)
 
 ```bash
-uvx colenio-jira-cli list --project PROJ
+uvx colenio-jira-cli issue list --project PROJ
 ```
 
-`jira-cli` remains available as a compatibility alias.
+`jira-cli` remains available as a command alias for `colenio-jira-cli`.
 
 ## Setup
 
@@ -55,56 +61,113 @@ JIRA_PROJECT_KEY=PROJ  # Backward-compatible fallback
 
 ## Usage
 
+Primary command model is `issue` (similar to `gh issue ...`).
+
+### Issue group
+
+```bash
+colenio-jira-cli issue --help
+```
+
 ### List issues
 
 ```bash
-# Basic listing
-colenio-jira-cli list --project PROJ
+# Canonical
+colenio-jira-cli issue list --project PROJ
 
 # With filters
-colenio-jira-cli list --project PROJ --status "In Progress" --assignee "john@example.com"
+colenio-jira-cli issue list --project PROJ --status "In Progress" --assignee "john@example.com"
 
 # With custom JQL
-colenio-jira-cli list --project PROJ --jql 'priority = High'
+colenio-jira-cli issue list --project PROJ --jql 'priority = High'
 
 # Different output formats
-colenio-jira-cli list --project PROJ --format json
-colenio-jira-cli list --project PROJ --format csv > issues.csv
-colenio-jira-cli list --project PROJ --format md
+colenio-jira-cli issue list --project PROJ --format json
+colenio-jira-cli issue list --project PROJ --format csv > issues.csv
+colenio-jira-cli issue list --project PROJ --format md
 ```
 
 ### Search with JQL
 
 ```bash
-colenio-jira-cli search 'project = PROJ AND status = "To Do" AND assignee is EMPTY'
-colenio-jira-cli search 'text ~ "urgent"' --format json
+colenio-jira-cli issue search 'project = PROJ AND status = "To Do" AND assignee is EMPTY'
+colenio-jira-cli issue search 'text ~ "urgent"' --format json
 ```
 
 ### Find by text
 
 ```bash
-colenio-jira-cli find --project PROJ "database migration"
-colenio-jira-cli find --project PROJ "performance issue" --max-results 100
+colenio-jira-cli issue find --project PROJ "database migration"
+colenio-jira-cli issue find --project PROJ "performance issue" --max-results 100
 ```
 
 ### View issue details
 
 ```bash
-colenio-jira-cli view PROJ-123
-colenio-jira-cli view PROJ-456 --comments
+colenio-jira-cli issue view PROJ-123
+colenio-jira-cli issue view PROJ-456 --comments
 ```
 
 ### Assign issue
 
 ```bash
-colenio-jira-cli assign PROJ-789 john@example.com
+colenio-jira-cli issue assign PROJ-789 john@example.com
 ```
 
 ### Transition issue
 
 ```bash
-colenio-jira-cli transition PROJ-999 "In Progress" --comment "Starting work"
-colenio-jira-cli transition PROJ-999 "Done"
+colenio-jira-cli issue transition PROJ-999 "In Progress" --comment "Starting work"
+colenio-jira-cli issue transition PROJ-999 "Done"
+```
+
+### Create issue
+
+```bash
+# Similar to gh issue create
+colenio-jira-cli issue create --project PROJ --title "Access governance ticket" --body "Please define access process"
+
+# With labels and assignee
+colenio-jira-cli issue create \
+  --project PROJ \
+  --title "[ORG] GitLab Access Governance" \
+  --body-file ./ticket.md \
+  --type Task \
+  --label governance --label access,auditability \
+  --assignee user@example.com \
+  --priority High
+```
+
+### Comment on issue
+
+```bash
+# Similar to gh issue comment
+colenio-jira-cli issue comment PROJ-123 --body "Reviewed. Access approved."
+
+# Markdown and ADF JSON support
+colenio-jira-cli issue comment PROJ-123 --format md --body "**Update:** done"
+colenio-jira-cli issue comment PROJ-123 --format adf --body-file ./comment.adf.json
+```
+
+### Edit issue
+
+```bash
+colenio-jira-cli issue edit PROJ-123 --title "Updated title" --body "Updated description"
+colenio-jira-cli issue edit PROJ-123 --add-label governance --remove-label old-label
+colenio-jira-cli issue edit PROJ-123 --set-label governance,access --priority Highest
+```
+
+### Close / reopen issue
+
+```bash
+# Auto-resolve transition (Done/Closed/Resolved)
+colenio-jira-cli issue close PROJ-123 --comment "Completed"
+
+# Auto-resolve transition (Reopen/Reopened/Open/To Do)
+colenio-jira-cli issue reopen PROJ-123 --comment "Need follow-up"
+
+# Explicit transition override by name or id
+colenio-jira-cli issue close PROJ-123 --transition "Done"
 ```
 
 ### Interactive TUI (Terminal User Interface)

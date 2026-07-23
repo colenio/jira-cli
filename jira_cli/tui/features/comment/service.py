@@ -6,9 +6,7 @@ from typing import Any
 
 from jira_cli.client import JiraClient
 from jira_cli.models import IssueRow
-
-from .validation import validate_adf_doc, validate_markdown_text
-
+from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 @dataclass(frozen=True)
 class CommentActionContext:

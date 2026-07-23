@@ -157,6 +157,59 @@ class JiraClient:
 
         self._jira.assign_issue(key, assignee_key)
 
+    def create_issue(
+        self,
+        project_key: str,
+        title: str,
+        body: str | dict[str, Any] | None = None,
+        issue_type: str = "Task",
+        labels: Optional[list[str]] = None,
+        assignee: Optional[str] = None,
+        priority: Optional[str] = None,
+        parent: Optional[str] = None,
+    ) -> dict:
+        """Create a Jira issue and return its raw payload.
+
+        Args:
+            project_key: Jira project key (e.g. ANN)
+            title: Issue summary/title
+            body: Description text or ADF document
+            issue_type: Jira issue type name (e.g. Task, Story, Bug)
+            labels: Optional issue labels
+            assignee: Optional assignee (email/accountId depending on Jira config)
+            priority: Optional priority name (e.g. High)
+            parent: Optional parent issue key
+        """
+        if self.dry_run:
+            print(
+                f"[dry-run] POST /issues | project={project_key} | type={issue_type} | "
+                f"title={title!r}"
+            )
+            return {"key": "DRY-0"}
+
+        fields: dict[str, Any] = {
+            "project": {"key": project_key},
+            "summary": title,
+            "issuetype": {"name": issue_type},
+        }
+
+        if body is not None:
+            fields["description"] = body
+        if labels:
+            fields["labels"] = labels
+        if priority:
+            fields["priority"] = {"name": priority}
+        if parent:
+            fields["parent"] = {"key": parent}
+
+        issue = self._jira.create_issue(fields=fields)
+
+        # Assign after creation because assignment semantics can vary by Jira setup.
+        if assignee:
+            self._jira.assign_issue(issue.key, assignee)
+
+        return issue.raw
+
     def add_comment(self, key: str, comment: str | dict[str, Any], use_adf: bool = False) -> None:
         """
         Add comment to an issue.
@@ -182,3 +235,17 @@ class JiraClient:
         if isinstance(comment, dict):
             comment = json.dumps(comment, ensure_ascii=False)
         self._jira.add_comment(key, comment)
+
+    def update_issue(self, key: str, fields: dict[str, Any]) -> None:
+        """Update issue fields.
+
+        Args:
+            key: Issue key
+            fields: Jira fields payload to update
+        """
+        if self.dry_run:
+            print(f"[dry-run] PUT /issues/{key} | fields={list(fields.keys())}")
+            return
+
+        issue = self._jira.issue(key)
+        issue.update(fields=fields)

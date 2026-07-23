@@ -3,6 +3,7 @@
 from click.testing import CliRunner
 
 import jira_cli.cli as cli_module
+import jira_cli.commands.query as query_module
 
 
 class DummyClient:
@@ -32,15 +33,15 @@ def test_view_web_uses_issue_key_url(monkeypatch):
     opened_urls = []
 
     monkeypatch.setattr(
-        cli_module,
-        "_get_jira_client",
+        query_module,
+        "get_jira_client",
         lambda *args, **kwargs: DummyClient("https://example.atlassian.net"),
     )
-    monkeypatch.setattr(cli_module.webbrowser, "open", lambda url: opened_urls.append(url) or True)
+    monkeypatch.setattr(query_module.webbrowser, "open", lambda url: opened_urls.append(url) or True)
 
     runner = CliRunner()
-    result = runner.invoke(cli_module.cli, ["view", "TEST-446", "--web"])
+    result = runner.invoke(cli_module.cli, ["issue", "view", "TEST-446", "--web"])
 
     assert result.exit_code == 0
-    assert "🌐 URL: https://example.atlassian.net/browse/TEST-446" in result.output
+    assert "URL: https://example.atlassian.net/browse/TEST-446" in result.output
     assert opened_urls == ["https://example.atlassian.net/browse/TEST-446"]
