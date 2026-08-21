@@ -302,23 +302,19 @@ uv run jira-cli-qa
 - [docs/architecture.md](docs/architecture.md)
 - [docs/distribution.md](docs/distribution.md)
 
-## PowerShell Integration
+## Global CLI Installation
 
-Add to `$PROFILE` (e.g., via dotfiles/aliases.ps1):
+Install the repository as an editable uv tool during development:
 
 ```powershell
-function jira-cli {
-    uvx colenio-jira-cli @args
-}
-
-# Or use directly
-alias jira = 'uvx colenio-jira-cli'
+uv tool install --editable .
+jira --help
 ```
 
-Then:
+The package owns the `jira` command, so no shell alias or PowerShell wrapper is required:
 
 ```powershell
-jira list --project PROJ
+jira issue list --project PROJ
 ```
 
 ## License
