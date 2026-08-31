@@ -3,12 +3,32 @@
 import csv
 import io
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from rich.console import Console
 from rich.table import Table
 
 from .models import IssueRow
+
+
+def adf_to_text(node: Any) -> str:
+    """Extract plain text from an Atlassian Document Format node/tree."""
+    if not isinstance(node, dict):
+        return str(node) if node else ""
+
+    node_type = node.get("type")
+    if node_type == "text":
+        return str(node.get("text", ""))
+
+    parts = [adf_to_text(child) for child in node.get("content", []) or []]
+    text = "".join(parts)
+
+    if node_type in {"paragraph", "heading", "codeBlock", "blockquote", "listItem"}:
+        text += "\n"
+    elif node_type == "hardBreak":
+        text += "\n"
+
+    return text
 
 
 class JiraRenderer:

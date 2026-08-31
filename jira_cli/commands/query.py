@@ -6,7 +6,7 @@ import click
 
 from jira_cli.commands.common import get_jira_client, resolve_project
 from jira_cli.query import JiraQuery
-from jira_cli.render import JiraRenderer
+from jira_cli.render import JiraRenderer, adf_to_text
 
 
 @click.command(name="list")
@@ -147,10 +147,9 @@ def view_issue(key: str, comments: bool, web: bool) -> None:
         description = fields.get("description")
         if description:
             click.echo("\nDescription:")
-            if isinstance(description, dict):
-                click.echo("  (Rich text format)")
-            else:
-                click.echo(f"  {description}")
+            text = adf_to_text(description) if isinstance(description, dict) else str(description)
+            for line in text.rstrip("\n").splitlines() or [""]:
+                click.echo(f"  {line}")
 
         if comments:
             comments_list = fields.get("comment", {}).get("comments", [])
@@ -159,10 +158,8 @@ def view_issue(key: str, comments: bool, web: bool) -> None:
                 for comment in comments_list:
                     author = comment.get("author", {}).get("displayName", "Unknown")
                     body = comment.get("body", {})
-                    if isinstance(body, dict):
-                        click.echo(f"  @{author}: (Rich text)")
-                    else:
-                        click.echo(f"  @{author}: {body}")
+                    text = adf_to_text(body) if isinstance(body, dict) else str(body)
+                    click.echo(f"  @{author}: {text.strip()}")
             else:
                 click.echo("\nNo comments")
 
