@@ -94,6 +94,172 @@ class JiraClient:
         )
         return issue.raw
 
+    def get_current_user(self) -> dict:
+        """
+        Fetch the authenticated account's user info (e.g. for 'assignee=me' resolution).
+
+        Returns:
+            Dict with at least 'displayName' if available, else {}
+        """
+        if self.dry_run:
+            return {}
+
+        return self._jira.myself()
+
+    def _search_assignable_users(self, project_key: str, query: Optional[str], max_results: int) -> list[dict]:
+        """
+        Call GET /user/assignable/multiProjectSearch directly with the 'query' param.
+
+        The jira-python library's own `search_assignable_users_for_projects()` sends the
+        deprecated 'username' param instead, which modern Jira Cloud instances reject with
+        HTTP 400 ("not supported in GDPR strict mode").
+        """
+        params: dict[str, Any] = {"projectKeys": project_key, "maxResults": max_results}
+        if query:
+            params["query"] = query
+        return self._jira._get_json("user/assignable/multiProjectSearch", params=params)
+
+    def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
+        """
+        Search assignable users for a project by partial name/email, server-side.
+
+        Unlike matching against already-loaded issues, this searches Jira's full user
+        directory for the project, so it isn't limited to whatever issues happen to be
+        currently loaded in the TUI (e.g. for the ':assignee=<name>' quick filter).
+
+        Args:
+            project_key: Jira project key
+            query: Partial display name or email to search for
+            max_results: Max users to return
+
+        Returns:
+            List of user dicts (accountId, displayName, emailAddress, active, ...)
+        """
+        if self.dry_run or not query:
+            return []
+
+        return self._search_assignable_users(project_key, query, max_results)
+
+    def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
+        """
+        List all users assignable to issues in a project (e.g. project members).
+
+        Args:
+            project_key: Jira project key
+            max_results: Max users to return
+
+        Returns:
+            List of user dicts (accountId, displayName, emailAddress, active, ...)
+        """
+        if self.dry_run:
+            return []
+
+        return self._search_assignable_users(project_key, None, max_results)
+
+    def list_projects(self) -> list[dict]:
+        """
+        List projects accessible to the authenticated account.
+
+        Returns:
+            List of dicts with at least 'key' and 'name'
+        """
+        if self.dry_run:
+            return []
+
+        return [p.raw for p in self._jira.projects()]
+
+    def get_project(self, key: str) -> dict:
+        """
+        Fetch details for a single project.
+
+        Args:
+            key: Jira project key
+
+        Returns:
+            Project dict (key, name, lead, projectTypeKey, description, ...)
+        """
+        if self.dry_run:
+            return {}
+
+        return self._jira.project(key).raw
+
+    def list_versions(self, project_key: str) -> list[dict]:
+        """
+        List fix versions (milestones) for a project.
+
+        Args:
+            project_key: Jira project key
+
+        Returns:
+            List of dicts (id, name, description, releaseDate, released, archived, ...)
+        """
+        if self.dry_run:
+            return []
+
+        return [v.raw for v in self._jira.project_versions(project_key)]
+
+    def create_version(
+        self, project_key: str, name: str, description: str = "", release_date: Optional[str] = None
+    ) -> dict:
+        """
+        Create a fix version (milestone) in a project.
+
+        Args:
+            project_key: Jira project key
+            name: Version name
+            description: Optional description
+            release_date: Optional release date (YYYY-MM-DD)
+
+        Returns:
+            Created version dict
+        """
+        if self.dry_run:
+            print(f"[dry-run] POST /version | project={project_key} | name={name!r}")
+            return {"name": name}
+
+        version = self._jira.create_version(
+            name=name, project=project_key, description=description or None, releaseDate=release_date
+        )
+        return version.raw
+
+    def delete_version(self, project_key: str, name: str) -> bool:
+        """
+        Delete a fix version (milestone) by name.
+
+        Args:
+            project_key: Jira project key
+            name: Version name to delete
+
+        Returns:
+            True if a matching version was found and deleted, False otherwise
+        """
+        if self.dry_run:
+            print(f"[dry-run] DELETE version | project={project_key} | name={name!r}")
+            return True
+
+        for version in self._jira.project_versions(project_key):
+            if version.name == name:
+                version.delete()
+                return True
+        return False
+
+    def search_users(self, query: str, max_results: int = 20) -> list[dict]:
+        """
+        Search Jira users globally (not project-scoped) by name/email.
+
+        Args:
+            query: Partial display name or email to search for
+            max_results: Max users to return
+
+        Returns:
+            List of user dicts (accountId, displayName, emailAddress, active, ...)
+        """
+        if self.dry_run or not query:
+            return []
+
+        users = self._jira.search_users(query=query, maxResults=max_results)
+        return [u.raw for u in users]
+
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """
         Fetch comments for an issue.

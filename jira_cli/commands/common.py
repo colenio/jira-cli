@@ -11,6 +11,15 @@ from jira_cli.dotenv import DotEnv
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 
+class OrderedGroup(click.Group):
+    """Click Group that lists subcommands in registration order (gh-style curated grouping)
+    instead of Click's default alphabetical sort, so `--help` reads read-commands-first,
+    then write-commands, rather than a-z."""
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return list(self.commands)
+
+
 def get_jira_client(
     base_url: Optional[str] = None,
     email: Optional[str] = None,

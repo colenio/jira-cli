@@ -5,6 +5,7 @@ import webbrowser
 import click
 
 from jira_cli.commands.common import (
+    OrderedGroup,
     get_jira_client,
     load_body,
     parse_labels,
@@ -15,12 +16,12 @@ from jira_cli.commands.common import (
 )
 
 
-@click.group(name="issue")
+@click.group(name="issue", cls=OrderedGroup)
 def issue_group() -> None:
     """Create, edit, comment and transition Jira issues."""
 
 
-@issue_group.command(name="create")
+@click.command(name="create")
 @click.option("--project", "project", "-p", default="", help="Jira project key; defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
 @click.option("--title", "title", "-t", required=True, help="Issue title/summary")
 @click.option("--body", "body", default="", help="Issue description text")
@@ -94,7 +95,7 @@ def issue_create(
         raise SystemExit(1)
 
 
-@issue_group.command(name="comment")
+@click.command(name="comment")
 @click.argument("key")
 @click.option("--body", "body", default="", help="Comment body")
 @click.option("--body-file", "body_file", default="", help="Read comment body from file")
@@ -127,7 +128,7 @@ def issue_comment(key: str, body: str, body_file: str, body_format: str) -> None
         raise SystemExit(1)
 
 
-@issue_group.command(name="edit")
+@click.command(name="edit")
 @click.argument("key")
 @click.option("--title", "title", default="", help="New issue title/summary")
 @click.option("--body", "body", default="", help="New issue description")
@@ -217,7 +218,7 @@ def issue_edit(
         raise SystemExit(1)
 
 
-@issue_group.command(name="close")
+@click.command(name="close")
 @click.argument("key")
 @click.option("--transition", "requested_transition", default="", help="Transition name or id override")
 @click.option("--comment", default="", help="Optional transition comment")
@@ -241,7 +242,7 @@ def issue_close(key: str, requested_transition: str, comment: str) -> None:
         raise SystemExit(1)
 
 
-@issue_group.command(name="reopen")
+@click.command(name="reopen")
 @click.argument("key")
 @click.option("--transition", "requested_transition", default="", help="Transition name or id override")
 @click.option("--comment", default="", help="Optional transition comment")

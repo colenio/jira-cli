@@ -41,3 +41,9 @@ Date: 2026-07-01
 - Add integration tests for business/company-managed project variants.
 - Add tests for search fallback + version permissions + label merge mode.
 - Document behavior matrix in docs (Cloud project type vs supported features).
+
+## 7) Token Metadata Display (TUI/CLI)
+
+- Show API token metadata (e.g. expiration date) on TUI startup / status bar.
+- If expiration is within 2 weeks, show a warning (or on CLI startup as stderr hint).
+- Relates to the current "expired token → silent empty result" issue: Jira Cloud API tokens don't expose expiry via a simple REST call today, so this needs research into what's available (Atlassian API token management API, or documenting a manual "last known expiry" config value).

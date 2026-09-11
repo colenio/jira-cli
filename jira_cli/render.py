@@ -64,6 +64,44 @@ class JiraRenderer:
         self.console.print(t)
         self.console.print(f"[green]✓ {len(rows)} issue(s)[/green]")
 
+    def users_table(self, users: list[dict], title: Optional[str] = None) -> None:
+        """Render a list of user dicts as a rich table (same style as `table()` for issues)."""
+        if not users:
+            self.console.print("[yellow]No users found.[/yellow]")
+            return
+
+        t = Table(title=title)
+        t.add_column("Display Name", style="cyan")
+        t.add_column("Email", style="white")
+        t.add_column("Active", style="green")
+
+        for user in users:
+            active = "✓" if user.get("active") else "✗"
+            t.add_row(user.get("displayName", "-"), user.get("emailAddress", "-"), active)
+
+        self.console.print(t)
+        self.console.print(f"[green]✓ {len(users)} user(s)[/green]")
+
+    def versions_table(self, versions: list[dict], title: Optional[str] = None) -> None:
+        """Render Jira fix versions/milestones as a rich table."""
+        if not versions:
+            self.console.print("[yellow]No versions found.[/yellow]")
+            return
+
+        t = Table(title=title)
+        t.add_column("Name", style="cyan")
+        t.add_column("Status", style="green")
+        t.add_column("Release Date", style="yellow")
+
+        for version in versions:
+            state = "released" if version.get("released") else "unreleased"
+            if version.get("archived"):
+                state = f"{state}, archived"
+            t.add_row(version.get("name", "-"), state, version.get("releaseDate") or "-")
+
+        self.console.print(t)
+        self.console.print(f"[green]✓ {len(versions)} version(s)[/green]")
+
     def json(self, rows: list[IssueRow]) -> str:
         """Render as JSON."""
         data = [row.model_dump() for row in rows]

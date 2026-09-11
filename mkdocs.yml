@@ -1,0 +1,48 @@
+site_name: Jira CLI
+site_description: Modular Jira CLI and Textual TUI for issue workflows
+repo_url: https://github.com/colenio/jira-cli
+repo_name: colenio/jira-cli
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+
+nav:
+  - Home: index.md
+  - Features: features.md
+  - Architecture: architecture.md
+  - Distribution: distribution.md
+  - API Reference:
+      - Client: api/client.md
+      - Query: api/query.md
+      - Quick Filters: api/quick_filters.md
+      - Models: api/models.md
+      - Renderer: api/render.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: false
+            members_order: source

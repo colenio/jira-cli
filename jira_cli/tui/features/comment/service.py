@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import json
+from threading import RLock
 from typing import Any
 
 from jira_cli.client import JiraClient
@@ -25,6 +26,7 @@ class JiraCommentFeature:
         self._client = client
         self._issue_comments: dict[str, list[dict[str, Any]]] = {}
         self._issue_comment_index: dict[str, int] = {}
+        self._lock = RLock()
 
     def normalize_input(self, expression: str) -> tuple[str, str]:
         """Parse comment input mode prefix and payload."""
@@ -83,16 +85,40 @@ class JiraCommentFeature:
 
     def ensure_loaded(self, issue_key: str) -> list[dict[str, Any]]:
         """Lazy-load comments for an issue and return current list."""
-        if issue_key not in self._issue_comments:
-            comments = self._client.get_issue_comments(issue_key)
+        with self._lock:
+            if issue_key in self._issue_comments:
+                return self._issue_comments[issue_key]
+
+        comments = self._client.get_issue_comments(issue_key)
+        with self._lock:
             self._issue_comments[issue_key] = comments
             self._issue_comment_index[issue_key] = 0
-        return self._issue_comments[issue_key]
+            return self._issue_comments[issue_key]
+
+    def prefetch(self, issue_keys: list[str]) -> None:
+        """Load comments for missing issue keys, ignoring per-issue fetch failures."""
+        for issue_key in issue_keys:
+            with self._lock:
+                already_loaded = issue_key in self._issue_comments
+            if already_loaded:
+                continue
+            try:
+                self.ensure_loaded(issue_key)
+            except Exception:
+                continue
+
+    def cached_view(self, issue_key: str) -> tuple[str, str]:
+        """Return cached comment text without triggering a REST call."""
+        with self._lock:
+            if issue_key not in self._issue_comments:
+                return "[dim]Loading comments...[/dim]", "..."
+        return self.current_view(issue_key)
 
     def invalidate_issue(self, issue_key: str) -> None:
         """Drop cached comments and index for one issue."""
-        self._issue_comments.pop(issue_key, None)
-        self._issue_comment_index.pop(issue_key, None)
+        with self._lock:
+            self._issue_comments.pop(issue_key, None)
+            self._issue_comment_index.pop(issue_key, None)
 
     def next_comment(self, issue_key: str) -> bool:
         """Move comment pointer forward when possible."""

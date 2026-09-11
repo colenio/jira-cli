@@ -1,24 +1,69 @@
 # Architecture
 
+`jira-cli` has one shared core (client, query building, models, rendering) used identically
+by two thin surfaces: the CLI (Click) and the TUI (Textual).
+
+```mermaid
+graph TD
+    subgraph Surfaces
+        CLI["cli.py<br/>Click entry point"]
+        CMDS["commands/*.py<br/>issue · query · workflow · ui"]
+        TUIAPP["tui/app.py<br/>JiraApp (Textual)"]
+        TUIFEAT["tui/features/*<br/>board · comment · issues · query · workflow"]
+
+        CLI --> CMDS
+        CMDS -- "ui.py: jira tui" --> TUIAPP
+        TUIAPP --> TUIFEAT
+    end
+
+    subgraph Shared["Shared core (used by both CLI and TUI)"]
+        CLIENT["client.py<br/>JiraClient (REST/auth)"]
+        QUERY["query.py<br/>JiraQuery (JQL composition)"]
+        QF["quick_filters.py<br/>typo/umlaut-tolerant matching,<br/>'me' shortcut, JQL clause building"]
+        MODELS["models.py<br/>Pydantic models"]
+        RENDER["render.py<br/>table/json/csv/md output"]
+        DOTENV["dotenv.py<br/>.env / local.env discovery"]
+    end
+
+    CMDS --> CLIENT
+    CMDS --> QUERY
+    CMDS --> RENDER
+    CMDS --> DOTENV
+    TUIFEAT --> QUERY
+    TUIFEAT --> QF
+    QUERY --> QF
+    QUERY --> CLIENT
+    QUERY --> MODELS
+    CLIENT --> MODELS
+```
+
 ## Modules
 
-- client.py: JiraClient for REST API calls, auth, and endpoints.
-- query.py: JiraQuery for JQL composition and search logic.
-- render.py: JiraRenderer for table/json/csv/markdown output.
-- models.py: Pydantic models for Jira structures.
-- dotenv.py: DotEnv loader for .env/local.env discovery.
-- cli.py: Click command surface (list, search, find, view, assign, transition, tui).
+- **client.py** — `JiraClient`: REST calls, auth, `myself`/assignable-users lookups.
+- **query.py** — `JiraQuery`: JQL composition (`project = ... AND ...`) and search execution.
+- **quick_filters.py** — shared, non-TUI-specific resolution logic: umlaut/diacritic-tolerant
+  matching, the `me` → `currentUser()` shortcut, and JQL clause building. Used identically by
+  `query.py` (CLI `--assignee`/`--status`/`--label`) and the TUI's `:` command bar, so a fix here
+  benefits both surfaces at once.
+- **models.py** — Pydantic models for Jira API responses and the flattened `IssueRow`.
+- **render.py** — `JiraRenderer`: table/JSON/CSV/Markdown output for the CLI.
+- **dotenv.py** — `.env`/`local.env` discovery (CWD or parent directories).
+- **cli.py** — Click command group wiring; **commands/\*.py** — thin, delegating command handlers.
 
-## TUI Layer
+## TUI layer
 
-- tui/app.py: Textual application and screen composition.
-- tui/colors.py: Theme constants.
-- tui/widgets/: Reusable UI components for table/panels.
+- **tui/app.py** — `JiraApp`: Textual application, screen composition, key bindings, the `:`
+  command bar dispatch.
+- **tui/header.py** — header widget showing the current Jira user next to the clock.
+- **tui/features/\*** — one package per concern (board view, comments, issue table/detail,
+  query/quick-filter service + suggester, workflow actions).
 
-## Design Notes
+## Design notes
 
-- Keep transport concerns in JiraClient.
-- Keep query assembly in JiraQuery.
-- Keep output formatting in JiraRenderer.
-- Keep TUI orchestration in tui/app.py.
+- Keep transport concerns in `JiraClient`; keep query assembly in `JiraQuery`.
+- Keep matching/resolution logic that both surfaces need in `quick_filters.py`, not duplicated
+  under `tui/`.
+- Keep output formatting in `JiraRenderer`; keep TUI orchestration in `tui/app.py`.
 - Keep CLI commands thin and delegating.
+- Quick filters (type/status/assignee/label) are always executed server-side (JQL) — never a
+  local-only filter over an already-loaded page of issues.

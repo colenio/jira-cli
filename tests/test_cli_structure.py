@@ -5,12 +5,14 @@ from jira_cli.cli import cli
 
 REQUIRED_ISSUE_COMMANDS = {
     "assign",
+    "children",
     "close",
     "comment",
     "create",
     "edit",
     "find",
     "list",
+    "overdue",
     "reopen",
     "search",
     "transition",
@@ -18,15 +20,17 @@ REQUIRED_ISSUE_COMMANDS = {
 }
 
 
-def test_root_has_only_issue_and_tui_commands() -> None:
+def test_root_has_expected_top_level_groups() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
 
     assert result.exit_code == 0
     assert "  issue  " in result.output
     assert "  tui    " in result.output
+    assert "  user  " in result.output
+    assert "  version  " in result.output
 
-    # Explicitly ensure old top-level commands are gone.
+    # Explicitly ensure old top-level commands are gone (they now live under 'issue').
     assert "\n  list" not in result.output
     assert "\n  create" not in result.output
     assert "\n  comment" not in result.output

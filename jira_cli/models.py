@@ -2,23 +2,24 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JiraUser(BaseModel):
     """Jira user representation."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     key: str
     display_name: str = Field(alias="displayName")
     email: Optional[str] = None
     avatar_url: Optional[str] = Field(None, alias="avatarUrls")
 
-    class Config:
-        populate_by_name = True
-
 
 class JiraIssueField(BaseModel):
     """Jira issue field (stripped down)."""
+
+    model_config = ConfigDict(extra="allow")
 
     summary: str
     status: Optional[dict | str] = None
@@ -33,31 +34,26 @@ class JiraIssueField(BaseModel):
     updated: Optional[str] = None
     description: Optional[str] = None
 
-    class Config:
-        extra = "allow"
-
 
 class JiraIssue(BaseModel):
     """Complete Jira issue."""
 
+    model_config = ConfigDict(extra="allow")
+
     key: str
     fields: JiraIssueField
-
-    class Config:
-        extra = "allow"
 
 
 class JiraSearchResult(BaseModel):
     """Response from Jira search endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     issues: list[JiraIssue] = []
     total: int = 0
     max_results: int = Field(0, alias="maxResults")
     start_at: int = Field(0, alias="startAt")
     next_page_token: Optional[str] = Field(None, alias="nextPageToken")
-
-    class Config:
-        populate_by_name = True
 
 
 class IssueRow(BaseModel):

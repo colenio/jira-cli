@@ -113,10 +113,15 @@ class IssueDetailWidget(Static):
 
     def _render_hierarchy(self) -> str:
         """Render parent/child relationship line."""
-        child_keys = ", ".join(self.issue.child_keys) if self.issue.child_keys else "—"
+        # child_keys only reflects Jira's 'subtasks' field (real sub-tasks); Epic/Story
+        # children (via 'parent') aren't known without a query, so don't claim "none".
+        if self.issue.child_keys:
+            children = ", ".join(self.issue.child_keys)
+        else:
+            children = "unknown — press 'd' to check"
         return (
             f"[dim]Parent:[/dim] {self.issue.parent_key or '—'} | "
-            f"[dim]Children:[/dim] {child_keys}"
+            f"[dim]Children:[/dim] {children}"
         )
 
     def _render_comment(self) -> str:

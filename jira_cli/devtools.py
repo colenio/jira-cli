@@ -51,3 +51,13 @@ def run_qa() -> None:
         exit_code = _run(check)
         if exit_code != 0:
             raise SystemExit(exit_code)
+
+
+def run_docs() -> None:
+    """Build the MkDocs documentation site."""
+    raise SystemExit(_run(["mkdocs", "build", "--strict"]))
+
+
+def run_docs_serve() -> None:
+    """Serve the MkDocs documentation site locally."""
+    raise SystemExit(_run(["mkdocs", "serve"]))
