@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": "Automated dependency updates for jira-cli",
+  "enabledManagers": ["github-actions", "pep621"],
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Group and automerge GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Group Python project dependencies",
+      "matchManagers": ["pep621"],
+      "groupName": "Python dependencies"
+    }
+  ],
+  "labels": ["dependencies", "renovate"],
+  "prConcurrentLimit": 3
+}
