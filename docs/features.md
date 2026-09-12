@@ -49,7 +49,7 @@ Everything you'd do in Jira Cloud's issue list/board for day-to-day triage — f
 
 ## What's missing (candidates for future work)
 
-See [docs/todo-issues-jira-client-hardening.md](todo-issues-jira-client-hardening.md) for the
+See the repository `ROADMAP.md` for the
 tracked backlog. Highlights from the table above: Scrum sprint/backlog awareness, bulk
 actions, saved filters, attachment handling, and reporting (CFD/burndown/burnup) are the
 biggest gaps versus the web UI.
