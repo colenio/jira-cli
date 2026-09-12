@@ -1,0 +1,291 @@
+"""GitHub Issues read-only provider."""
+
+from __future__ import annotations
+
+from datetime import timezone
+from typing import Optional
+
+from github import Auth, Github
+from github.GithubObject import NotSet
+
+from jira_cli.models import JiraIssue, JiraIssueField, JiraSearchResult
+
+from .base import FilterDescriptor, ProviderDescriptor, ResourceDescriptor, SortDescriptor
+
+GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
+    name="github",
+    resources=(
+        ResourceDescriptor(
+            kind="issues",
+            fields=("key", "summary", "status", "assignee", "labels", "milestone", "updated"),
+            filters=(
+                FilterDescriptor(name="status", field="state"),
+                FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                FilterDescriptor(name="label", field="labels"),
+                FilterDescriptor(name="milestone", field="milestone"),
+                FilterDescriptor(name="key", field="number"),
+            ),
+            sorts=(
+                SortDescriptor(name="created", field="created", default_direction="desc"),
+                SortDescriptor(name="updated", field="updated", default_direction="desc"),
+                SortDescriptor(name="comments", field="comments", default_direction="desc"),
+            ),
+        ),
+        ResourceDescriptor(
+            kind="users",
+            fields=("displayName", "emailAddress", "active", "accountId"),
+            filters=(FilterDescriptor(name="query", field="query"),),
+        ),
+        ResourceDescriptor(
+            kind="versions",
+            fields=("name", "description", "releaseDate", "released", "archived"),
+        ),
+    ),
+)
+
+
+class GitHubProvider:
+    """Read-only provider backed by PyGithub and a single owner/repository target."""
+
+    dry_run = False
+
+    def __init__(self, repository: str, token: str):
+        self.repository = repository
+        self.base_url = f"https://github.com/{repository}"
+        self._github = Github(auth=Auth.Token(token))
+        self._repo = self._github.get_repo(repository)
+
+    def describe(self) -> ProviderDescriptor:
+        """Describe GitHub resources and read-only capabilities."""
+        return GITHUB_PROVIDER_DESCRIPTOR
+
+    def search(
+        self,
+        jql: str,
+        fields: Optional[list[str]] = None,
+        start_at: int = 0,
+        max_results: int = 50,
+        expand: Optional[list[str]] = None,
+    ) -> JiraSearchResult:
+        """Search GitHub issues using the JiraQuery-generated subset understood by this provider."""
+        filters, sort_field, sort_direction = _parse_query(jql)
+        state = _github_state(filters.get("status"))
+        labels = filters.get("labels")
+        assignee = self._assignee_login(filters.get("assignee")) or NotSet
+        milestone = _milestone_object(self._repo, filters.get("milestone")) or NotSet
+        label_filter = [labels] if labels else NotSet
+
+        issues = list(self._repo.get_issues(state=state, assignee=assignee, labels=label_filter, milestone=milestone))
+        issues = [_issue for _issue in issues if _matches_issue(_issue, filters)]
+        issues = _sort_issues(issues, sort_field, sort_direction)
+        page = issues[start_at : start_at + max_results]
+        return JiraSearchResult(
+            issues=[self._to_jira_issue(issue) for issue in page],
+            total=len(issues),
+            startAt=start_at,
+            maxResults=max_results,
+        )
+
+    def get_current_user(self) -> dict:
+        """Return the authenticated GitHub user."""
+        user = self._github.get_user()
+        return _github_user_dict(user)
+
+    def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
+        """Return repository assignees/collaborators assignable to GitHub issues."""
+        return [_github_user_dict(user) for user in list(self._repo.get_assignees())[:max_results]]
+
+    def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
+        """Search repository assignees by login/name."""
+        query_lower = query.casefold()
+        users = [
+            user
+            for user in self.list_assignable_users(project_key, max_results=100)
+            if query_lower in user.get("displayName", "").casefold() or query_lower in user.get("accountId", "").casefold()
+        ]
+        return users[:max_results]
+
+    def search_users(self, query: str, max_results: int = 20) -> list[dict]:
+        """Search repository users; GitHub global search is intentionally not used for privacy/noise."""
+        return self.find_assignable_users(self.repository, query, max_results=max_results)
+
+    def list_versions(self, project_key: str) -> list[dict]:
+        """Return repository milestones in the existing version/milestone shape."""
+        return [_milestone_dict(milestone) for milestone in self._repo.get_milestones(state="all")]
+
+    def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
+        """Return comments for a GitHub issue key like '#123' or 'owner/repo#123'."""
+        issue = self._repo.get_issue(_issue_number(key))
+        return [_comment_dict(comment) for comment in issue.get_comments()]
+
+    def add_comment(self, key: str, body: str | dict, use_adf: bool = False) -> dict:
+        """Read-only provider: comments are not supported yet."""
+        raise NotImplementedError("GitHub provider is read-only for comments in this version")
+
+    def get_transitions(self, key: str) -> list[dict]:
+        """Read-only provider: workflow transitions are not exposed yet."""
+        return []
+
+    def transition_issue(self, key: str, transition_id: str, comment: str | None = None) -> None:
+        """Read-only provider: transitions are not supported yet."""
+        raise NotImplementedError("GitHub provider is read-only for transitions in this version")
+
+    def assign_issue(self, key: str, account_id: str) -> None:
+        """Read-only provider: assignment is not supported yet."""
+        raise NotImplementedError("GitHub provider is read-only for assignment in this version")
+
+    def _to_jira_issue(self, issue) -> JiraIssue:
+        labels = [label.name for label in issue.labels]
+        assignee = _github_user_dict(issue.assignee) if issue.assignee else None
+        issue_type = _label_value(labels, "type") or "Issue"
+        priority = _label_value(labels, "priority") or ""
+        return JiraIssue(
+            key=f"#{issue.number}",
+            fields=JiraIssueField(
+                summary=issue.title,
+                issuetype={"name": issue_type},
+                status={"name": issue.state},
+                priority={"name": priority},
+                assignee=assignee,
+                updated=_datetime_text(issue.updated_at),
+                labels=labels,
+            ),
+        )
+
+    def _assignee_login(self, value: str | None) -> str:
+        """Resolve a JQL assignee value to a GitHub login."""
+        if not value:
+            return ""
+        if value == "*":
+            return self.get_current_user().get("accountId", "")
+        users = self.find_assignable_users(self.repository, value, max_results=1)
+        return users[0].get("accountId", "") if users else value
+
+
+def _parse_query(query: str) -> tuple[dict[str, str], str, str]:
+    query_part, _, order_part = query.partition(" ORDER BY ")
+    filters: dict[str, str] = {}
+    for condition in [part.strip() for part in query_part.split(" AND ")]:
+        if not condition or condition.startswith("project ="):
+            continue
+        if condition == "assignee = currentUser()":
+            filters["assignee"] = "*"
+            continue
+        field, _, raw_value = condition.partition("=")
+        field = field.strip()
+        value = raw_value.strip().strip('"')
+        if field == "key":
+            filters["number"] = value
+        elif field == "status":
+            filters["status"] = value
+        elif field == "assignee":
+            filters["assignee"] = value
+        elif field == "labels":
+            filters["labels"] = value
+        elif field == "priority":
+            filters["priority"] = value
+        elif field == "issuetype":
+            filters["type"] = value
+    if not order_part:
+        return filters, "updated", "desc"
+    parts = order_part.split()
+    return filters, parts[0].lower(), parts[1].lower() if len(parts) > 1 else "asc"
+
+
+def _matches_issue(issue, filters: dict[str, str]) -> bool:
+    if filters.get("number") and _issue_number(filters["number"]) != issue.number:
+        return False
+    labels = [label.name for label in issue.labels]
+    if filters.get("priority") and _label_value(labels, "priority") != filters["priority"]:
+        return False
+    if filters.get("type") and _label_value(labels, "type") != filters["type"]:
+        return False
+    return True
+
+
+def _sort_issues(issues: list, field: str, direction: str) -> list:
+    reverse = direction == "desc"
+    accessors = {
+        "created": lambda issue: issue.created_at,
+        "updated": lambda issue: issue.updated_at,
+        "comments": lambda issue: issue.comments,
+    }
+    accessor = accessors.get(field)
+    return sorted(issues, key=accessor, reverse=reverse) if accessor else issues
+
+
+def _github_state(status: str | None) -> str:
+    if not status:
+        return "open"
+    normalized = status.casefold()
+    if normalized in {"closed", "done"}:
+        return "closed"
+    if normalized in {"all", "any"}:
+        return "all"
+    return "open"
+
+
+def _milestone_object(repo, title: str | None):
+    if not title:
+        return None
+    for milestone in repo.get_milestones(state="all"):
+        if milestone.title == title:
+            return milestone
+    return None
+
+
+def _github_user_dict(user) -> dict:
+    name = getattr(user, "name", None) or getattr(user, "login", "")
+    login = getattr(user, "login", "")
+    return {"accountId": login, "displayName": name, "emailAddress": getattr(user, "email", None) or "-", "active": True}
+
+
+def _milestone_dict(milestone) -> dict:
+    due_on = getattr(milestone, "due_on", None)
+    return {
+        "id": str(getattr(milestone, "number", "")),
+        "name": getattr(milestone, "title", "?"),
+        "description": getattr(milestone, "description", "") or "",
+        "releaseDate": _date_text(due_on),
+        "released": getattr(milestone, "state", "open") == "closed",
+        "archived": False,
+    }
+
+
+def _comment_dict(comment) -> dict:
+    return {
+        "author": {"displayName": getattr(comment.user, "login", "unknown")},
+        "created": _datetime_text(getattr(comment, "created_at", None)),
+        "body": getattr(comment, "body", ""),
+    }
+
+
+def _label_value(labels: list[str], prefix: str) -> str:
+    for label in labels:
+        normalized = label.casefold()
+        for separator in (":", "/"):
+            token = f"{prefix}{separator}"
+            if normalized.startswith(token):
+                return label[len(token) :]
+    return ""
+
+
+def _issue_number(key: str) -> int:
+    value = key.rsplit("#", 1)[-1].strip()
+    if value.upper().startswith("GH-"):
+        value = value[3:]
+    return int(value)
+
+
+def _datetime_text(value) -> str:
+    if not value:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat()
+
+
+def _date_text(value) -> str:
+    if not value:
+        return "-"
+    return value.date().isoformat()

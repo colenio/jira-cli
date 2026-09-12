@@ -1,6 +1,7 @@
 """Tests for provider descriptors and provider-level capabilities."""
 
 from jira_cli.providers.demo import DemoProvider
+from jira_cli.providers.github import GITHUB_PROVIDER_DESCRIPTOR, GitHubProvider
 from jira_cli.providers.jira import JIRA_PROVIDER_DESCRIPTOR
 from jira_cli.providers.registry import ProviderRegistry
 
@@ -22,6 +23,15 @@ def test_demo_provider_describes_same_core_resources() -> None:
     assert descriptor.resource("versions") is not None
 
 
+def test_github_provider_describes_read_only_resources() -> None:
+    issues = GITHUB_PROVIDER_DESCRIPTOR.resource("issues")
+
+    assert issues is not None
+    assert {item.name for item in issues.filters} >= {"status", "assignee", "label", "milestone", "key"}
+    assert {item.name for item in issues.sorts} >= {"created", "updated", "comments"}
+    assert not issues.actions
+
+
 def test_descriptor_resource_lookup_returns_none_for_unknown_kind() -> None:
     assert DemoProvider().describe().resource("unknown") is None
 
@@ -30,6 +40,7 @@ def test_registry_always_exposes_demo_context(monkeypatch) -> None:
     monkeypatch.delenv("JIRA_URL", raising=False)
     monkeypatch.delenv("JIRA_EMAIL", raising=False)
     monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+    monkeypatch.setattr(ProviderRegistry, "github_token", staticmethod(lambda: ""))
 
     contexts = ProviderRegistry(load_env=False).available_contexts()
 
@@ -52,3 +63,23 @@ def test_registry_resolves_jira_context_from_env(monkeypatch) -> None:
     assert context.name == "jira:COM"
     assert context.provider == "jira"
     assert context.target == "COM"
+
+
+def test_registry_resolves_explicit_github_repository() -> None:
+    context = ProviderRegistry(load_env=False).resolve_context(provider="github", repository="colenio/jira-cli")
+
+    assert context.name == "github:colenio/jira-cli"
+    assert context.provider == "github"
+    assert context.target == "colenio/jira-cli"
+
+
+def test_registry_parses_github_remotes() -> None:
+    assert ProviderRegistry.parse_github_remote("git@github.com:colenio/jira-cli.git") == "colenio/jira-cli"
+    assert ProviderRegistry.parse_github_remote("https://github.com/colenio/jira-cli.git") == "colenio/jira-cli"
+    assert ProviderRegistry.parse_github_remote("git@github.com:acme/repo.with.dots.git") == "acme/repo.with.dots"
+
+
+def test_github_provider_descriptor_method_without_network() -> None:
+    provider = GitHubProvider.__new__(GitHubProvider)
+
+    assert provider.describe().name == "github"

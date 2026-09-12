@@ -92,6 +92,10 @@ Use `jira tui --demo` to launch the same TUI with synthetic issues, users, comme
 milestones. This is intended for safe screenshots and screencasts without exposing customer
 Jira data.
 
+Use `jira tui --provider github -R owner/name` to browse GitHub Issues read-only. The GitHub
+provider uses `GH_TOKEN`/`GITHUB_TOKEN` or the existing `gh auth login` session, and can infer the
+repository from the current GitHub remote when `-R` is omitted.
+
 ### TUI screenshots
 
 The issue table is the default workspace for triage. It keeps status, assignee, and priority

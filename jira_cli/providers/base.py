@@ -2,41 +2,46 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Optional, Protocol
+
+from pydantic import BaseModel, ConfigDict
 
 from jira_cli.models import JiraSearchResult
 
 
-@dataclass(frozen=True)
-class FilterDescriptor:
+class FilterDescriptor(BaseModel):
     """A filter supported by a provider resource."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     field: str
     special_values: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True)
-class SortDescriptor:
+class SortDescriptor(BaseModel):
     """A sort supported by a provider resource."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     field: str
     default_direction: str = "asc"
 
 
-@dataclass(frozen=True)
-class ActionDescriptor:
+class ActionDescriptor(BaseModel):
     """An action supported by a provider resource."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     requires_comment: bool = False
 
 
-@dataclass(frozen=True)
-class ResourceDescriptor:
+class ResourceDescriptor(BaseModel):
     """A provider resource kind and its supported fields, filters, sorts, and actions."""
+
+    model_config = ConfigDict(frozen=True)
 
     kind: str
     fields: tuple[str, ...] = ()
@@ -45,12 +50,13 @@ class ResourceDescriptor:
     actions: tuple[ActionDescriptor, ...] = ()
 
 
-@dataclass(frozen=True)
-class ProviderDescriptor:
+class ProviderDescriptor(BaseModel):
     """Static provider metadata used by CLI/TUI surfaces to discover capabilities."""
 
+    model_config = ConfigDict(frozen=True)
+
     name: str
-    resources: tuple[ResourceDescriptor, ...] = field(default_factory=tuple)
+    resources: tuple[ResourceDescriptor, ...] = ()
 
     def resource(self, kind: str) -> ResourceDescriptor | None:
         """Return a resource descriptor by kind."""
@@ -60,9 +66,10 @@ class ProviderDescriptor:
         return None
 
 
-@dataclass(frozen=True)
-class ProviderContext:
+class ProviderContext(BaseModel):
     """An active provider plus its target project/repository context."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     provider: str

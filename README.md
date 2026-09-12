@@ -32,6 +32,13 @@ For screenshots, screencasts, or trying the TUI without Jira credentials, use sy
 jira tui --demo
 ```
 
+GitHub Issues can be browsed read-only in the TUI. Authentication uses `GH_TOKEN`/`GITHUB_TOKEN`
+or your existing `gh auth login` session, and `-R` works like `gh -R owner/name`:
+
+```bash
+jira tui --provider github -R colenio/jira-cli
+```
+
 ## Screenshots
 
 The default issue table is optimized for quick triage: type, key, summary, status, assignee,
