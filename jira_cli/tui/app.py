@@ -8,7 +8,7 @@ from textual.widgets import Label, DataTable, Footer, Input, ListView
 from textual.binding import Binding
 
 from jira_cli.models import IssueRow
-from jira_cli.providers import IssueTrackerProvider
+from jira_cli.providers import IssueTrackerProvider, ProviderContext
 from jira_cli.query import JiraQuery, order_by_clause
 from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
@@ -104,11 +104,13 @@ class JiraApp(App):
         project_key: str,
         issues: list[IssueRow],
         current_user_display_name: str = "",
+        context: ProviderContext | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.client = client
         self.project_key = project_key
+        self.context = context or ProviderContext(name=f"jira:{project_key}", provider="jira", target=project_key, label=f"Jira / {project_key}")
         self.all_issues = issues
         self.issues = issues
         self.users: list[dict] = []
@@ -139,8 +141,8 @@ class JiraApp(App):
 
     def compose(self) -> ComposeResult:
         """Create the app layout."""
-        yield JiraTopBar(self.current_user_display_name)
-        yield Label(f"[bold cyan]Jira CLI[/bold cyan] — Project: [bold yellow]{self.project_key}[/bold yellow]")
+        yield JiraTopBar(self.current_user_display_name, title=f"Jira CLI — {self.context.label}")
+        yield Label(f"[bold cyan]Jira CLI[/bold cyan] — Context: [bold yellow]{self.context.label}[/bold yellow]")
         yield Label("MODE: PROJECT", id="mode_context")
         yield Label(f"Source: project={self.project_key}", id="query_context")
         yield Input(placeholder="Find text in summary/description and press Enter", id="query_input")
@@ -870,7 +872,7 @@ class JiraApp(App):
         self.notify(help_text, title="Help")
 
 
-def run_tui(client: IssueTrackerProvider, project_key: str) -> None:
+def run_tui(client: IssueTrackerProvider, project_key: str, context: ProviderContext | None = None) -> None:
     """Launch the TUI application."""
     query = JiraQuery(client)
     try:
@@ -880,7 +882,7 @@ def run_tui(client: IssueTrackerProvider, project_key: str) -> None:
             current_user_display_name = client.get_current_user().get("displayName", "")
         except Exception:
             pass  # 'assignee=me' just won't resolve; not fatal for the rest of the TUI.
-        app = JiraApp(client, project_key, issues, current_user_display_name)
+        app = JiraApp(client, project_key, issues, current_user_display_name, context=context)
         app.run()
     except Exception as e:
         print(f"Error launching TUI: {e}")

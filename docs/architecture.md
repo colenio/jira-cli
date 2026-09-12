@@ -17,7 +17,7 @@ graph TD
     end
 
     subgraph Shared["Shared core (used by both CLI and TUI)"]
-      PROVIDERS["providers/*<br/>IssueTrackerProvider,<br/>JiraProvider, DemoProvider"]
+      PROVIDERS["providers/*<br/>IssueTrackerProvider,<br/>ProviderContext/Registry,<br/>JiraProvider, DemoProvider"]
         CLIENT["client.py<br/>JiraClient (REST/auth)"]
         QUERY["query.py<br/>JiraQuery (JQL composition)"]
         QF["quick_filters.py<br/>typo/umlaut-tolerant matching,<br/>'me' shortcut, JQL clause building"]
@@ -43,9 +43,10 @@ graph TD
 
 ## Modules
 
-- **providers/** — provider contract, static resource/filter/action descriptors, and Jira/demo
-  provider implementations. CLI/TUI/query services type against `IssueTrackerProvider` so future
-  GitHub/GitLab providers have a clear integration boundary.
+- **providers/** — provider contract, static resource/filter/action descriptors,
+  `ProviderContext`/`ProviderRegistry`, and Jira/demo provider implementations. CLI/TUI/query
+  services type against `IssueTrackerProvider` so future GitHub/GitLab providers have a clear
+  integration boundary.
 - **client.py** — `JiraClient`: Jira REST calls, auth, `myself`/assignable-users lookups.
 - **query.py** — `JiraQuery`: JQL composition (`project = ... AND ...`) and search execution.
 - **quick_filters.py** — shared, non-TUI-specific resolution logic: umlaut/diacritic-tolerant

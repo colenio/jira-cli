@@ -60,6 +60,16 @@ class ProviderDescriptor:
         return None
 
 
+@dataclass(frozen=True)
+class ProviderContext:
+    """An active provider plus its target project/repository context."""
+
+    name: str
+    provider: str
+    target: str
+    label: str
+
+
 class IssueTrackerProvider(Protocol):
     """Shared provider surface currently used by CLI, TUI, and query services."""
 

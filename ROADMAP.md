@@ -67,7 +67,7 @@ Date: 2026-07-01
 
 Suggested sequence:
 
-1. Extract a clean `IssueProvider`/resource-provider abstraction and adapt Jira + demo mode to it.
+1. Continue extracting a clean `IssueProvider`/resource-provider abstraction and adapt Jira + demo mode to it.
 2. Add a GitHub Issues read-only provider.
 3. Validate day-to-day transition ergonomics in the TUI before expanding write support.
 4. Dogfood the GitHub provider by transferring this roadmap into GitHub Issues from the TUI.

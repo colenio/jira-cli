@@ -2,6 +2,7 @@
 
 from jira_cli.providers.demo import DemoProvider
 from jira_cli.providers.jira import JIRA_PROVIDER_DESCRIPTOR
+from jira_cli.providers.registry import ProviderRegistry
 
 
 def test_jira_provider_describes_issue_filters_and_actions() -> None:
@@ -23,3 +24,31 @@ def test_demo_provider_describes_same_core_resources() -> None:
 
 def test_descriptor_resource_lookup_returns_none_for_unknown_kind() -> None:
     assert DemoProvider().describe().resource("unknown") is None
+
+
+def test_registry_always_exposes_demo_context(monkeypatch) -> None:
+    monkeypatch.delenv("JIRA_URL", raising=False)
+    monkeypatch.delenv("JIRA_EMAIL", raising=False)
+    monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+
+    contexts = ProviderRegistry(load_env=False).available_contexts()
+
+    assert [context.name for context in contexts] == ["demo"]
+
+
+def test_registry_resolves_explicit_demo_target() -> None:
+    context = ProviderRegistry(load_env=False).resolve_context(provider="demo", project="SANDBOX")
+
+    assert context.provider == "demo"
+    assert context.target == "SANDBOX"
+    assert context.label == "Demo / SANDBOX"
+
+
+def test_registry_resolves_jira_context_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("JIRA_PROJECT", "COM")
+
+    context = ProviderRegistry(load_env=False).resolve_context(provider="jira")
+
+    assert context.name == "jira:COM"
+    assert context.provider == "jira"
+    assert context.target == "COM"

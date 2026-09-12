@@ -52,3 +52,4 @@ def test_tui_command_exposes_demo_mode() -> None:
 
     assert result.exit_code == 0
     assert "--demo" in result.output
+    assert "--provider" in result.output
