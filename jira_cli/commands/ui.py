@@ -12,10 +12,11 @@ def launch_tui(project: str, demo: bool) -> None:
     """Launch interactive TUI (Terminal User Interface) for Jira issue management."""
     try:
         if demo:
-            from jira_cli.demo import DEMO_PROJECT_KEY, DemoJiraClient
+            from jira_cli.demo import DEMO_PROJECT_KEY
+            from jira_cli.providers.demo import DemoProvider
             from jira_cli.tui.app import run_tui
 
-            run_tui(DemoJiraClient(), project or DEMO_PROJECT_KEY)
+            run_tui(DemoProvider(), project or DEMO_PROJECT_KEY)
             return
 
         from jira_cli.tui.app import run_tui

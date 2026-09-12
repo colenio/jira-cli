@@ -6,8 +6,9 @@ from typing import Optional
 
 import click
 
-from jira_cli.client import JiraClient
 from jira_cli.dotenv import DotEnv
+from jira_cli.providers import IssueTrackerProvider
+from jira_cli.providers.jira import JiraProvider
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 
@@ -24,7 +25,7 @@ def get_jira_client(
     base_url: Optional[str] = None,
     email: Optional[str] = None,
     api_token: Optional[str] = None,
-) -> JiraClient:
+) -> IssueTrackerProvider:
     """Load Jira credentials from env/dotenv and create client."""
     env = DotEnv(verbose=False)
     env.load()
@@ -49,7 +50,7 @@ def get_jira_client(
         click.echo("  JIRA_API_TOKEN=your_api_token", err=True)
         raise SystemExit(1)
 
-    return JiraClient(base_url=base_url, email=email, api_token=api_token)
+    return JiraProvider(base_url=base_url, email=email, api_token=api_token)
 
 
 def resolve_project(project: Optional[str]) -> str:
@@ -123,7 +124,7 @@ def parse_text_payload(mode: str, payload: str) -> str | dict:
     return payload
 
 
-def resolve_transition_id(client: JiraClient, key: str, requested: str, fallback_names: list[str]) -> str:
+def resolve_transition_id(client: IssueTrackerProvider, key: str, requested: str, fallback_names: list[str]) -> str:
     """Resolve transition id by explicit id/name or fallback names."""
     transitions = client.get_transitions(key)
     if not transitions:

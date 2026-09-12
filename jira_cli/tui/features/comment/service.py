@@ -5,8 +5,8 @@ import json
 from threading import RLock
 from typing import Any
 
-from jira_cli.client import JiraClient
 from jira_cli.models import IssueRow
+from jira_cli.providers import IssueTrackerProvider
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 @dataclass(frozen=True)
@@ -22,7 +22,7 @@ class CommentActionContext:
 class JiraCommentFeature:
     """Encapsulate comment parsing, cache loading, and navigation state."""
 
-    def __init__(self, client: JiraClient) -> None:
+    def __init__(self, client: IssueTrackerProvider) -> None:
         self._client = client
         self._issue_comments: dict[str, list[dict[str, Any]]] = {}
         self._issue_comment_index: dict[str, int] = {}

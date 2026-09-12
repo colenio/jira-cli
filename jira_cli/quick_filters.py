@@ -7,7 +7,7 @@ clause building) exactly the same way, instead of duplicating this logic per sur
 
 import unicodedata
 
-from .client import JiraClient
+from .providers import IssueTrackerProvider
 
 _GERMAN_TRANSLITERATIONS = {"ß": "ss", "ä": "ae", "ö": "oe", "ü": "ue"}
 
@@ -62,7 +62,7 @@ class QuickFilterResolver:
     keeping both surfaces thin.
     """
 
-    def __init__(self, client: JiraClient, project_key: str):
+    def __init__(self, client: IssueTrackerProvider, project_key: str):
         self.client = client
         self.project_key = project_key
 

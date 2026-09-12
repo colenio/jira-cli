@@ -7,8 +7,8 @@ from textual.app import ComposeResult, App
 from textual.widgets import Label, DataTable, Footer, Input, ListView
 from textual.binding import Binding
 
-from jira_cli.client import JiraClient
 from jira_cli.models import IssueRow
+from jira_cli.providers import IssueTrackerProvider
 from jira_cli.query import JiraQuery, order_by_clause
 from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
@@ -100,7 +100,7 @@ class JiraApp(App):
 
     def __init__(
         self,
-        client: JiraClient,
+        client: IssueTrackerProvider,
         project_key: str,
         issues: list[IssueRow],
         current_user_display_name: str = "",
@@ -870,7 +870,7 @@ class JiraApp(App):
         self.notify(help_text, title="Help")
 
 
-def run_tui(client: JiraClient, project_key: str) -> None:
+def run_tui(client: IssueTrackerProvider, project_key: str) -> None:
     """Launch the TUI application."""
     query = JiraQuery(client)
     try:

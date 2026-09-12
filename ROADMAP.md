@@ -60,6 +60,7 @@ Date: 2026-07-01
 - Prefer an official Python GitHub client for the GitHub provider.
 - Make GitHub provider CWD-aware like `gh`:
   - infer `owner/repo` from the current Git remote when possible
+  - support an explicit repository target equivalent to `gh -R owner/name`
   - consider reusing `gh` authentication or token discovery instead of asking for duplicate credentials
 - Keep GitLab Issues as a later provider; account for GitLab-specific concepts such as epics and weights.
 - Revisit project/package naming once a second real provider exists; `jira-cli` is appropriate until then, but a future generalized tool likely wants a name like `tracker-cli` or `issue-cli`.

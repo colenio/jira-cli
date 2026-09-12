@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-from jira_cli.client import JiraClient
 from jira_cli.models import IssueRow
+from jira_cli.providers import IssueTrackerProvider
 
 
 @dataclass(frozen=True)
@@ -32,7 +32,7 @@ class AssignActionContext:
 class JiraWorkflowFeature:
     """Encapsulate workflow operations and transition input parsing."""
 
-    def __init__(self, client: JiraClient) -> None:
+    def __init__(self, client: IssueTrackerProvider) -> None:
         self._client = client
 
     @staticmethod

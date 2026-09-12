@@ -3,8 +3,8 @@
 import re
 from typing import Optional
 
-from .client import JiraClient
 from .models import IssueRow
+from .providers import IssueTrackerProvider
 from .quick_filters import QuickFilterResolver
 
 _ISSUE_KEY_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -51,7 +51,7 @@ def order_by_clause(order_by: str | None) -> str:
 class JiraQuery:
     """Build and execute JQL queries."""
 
-    def __init__(self, client: JiraClient):
+    def __init__(self, client: IssueTrackerProvider):
         self.client = client
 
     def search_project(

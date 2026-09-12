@@ -17,6 +17,7 @@ graph TD
     end
 
     subgraph Shared["Shared core (used by both CLI and TUI)"]
+      PROVIDERS["providers/*<br/>IssueTrackerProvider,<br/>JiraProvider, DemoProvider"]
         CLIENT["client.py<br/>JiraClient (REST/auth)"]
         QUERY["query.py<br/>JiraQuery (JQL composition)"]
         QF["quick_filters.py<br/>typo/umlaut-tolerant matching,<br/>'me' shortcut, JQL clause building"]
@@ -26,20 +27,26 @@ graph TD
     end
 
     CMDS --> CLIENT
+    CMDS --> PROVIDERS
     CMDS --> QUERY
     CMDS --> RENDER
     CMDS --> DOTENV
     TUIFEAT --> QUERY
     TUIFEAT --> QF
+    TUIAPP --> PROVIDERS
     QUERY --> QF
-    QUERY --> CLIENT
+    QUERY --> PROVIDERS
+    PROVIDERS --> CLIENT
     QUERY --> MODELS
     CLIENT --> MODELS
 ```
 
 ## Modules
 
-- **client.py** — `JiraClient`: REST calls, auth, `myself`/assignable-users lookups.
+- **providers/** — provider contract, static resource/filter/action descriptors, and Jira/demo
+  provider implementations. CLI/TUI/query services type against `IssueTrackerProvider` so future
+  GitHub/GitLab providers have a clear integration boundary.
+- **client.py** — `JiraClient`: Jira REST calls, auth, `myself`/assignable-users lookups.
 - **query.py** — `JiraQuery`: JQL composition (`project = ... AND ...`) and search execution.
 - **quick_filters.py** — shared, non-TUI-specific resolution logic: umlaut/diacritic-tolerant
   matching, the `me` → `currentUser()` shortcut, and JQL clause building. Used identically by
@@ -60,7 +67,9 @@ graph TD
 
 ## Design notes
 
-- Keep transport concerns in `JiraClient`; keep query assembly in `JiraQuery`.
+- Keep provider capabilities data-driven through `ProviderDescriptor`; avoid hard-coding that every
+  tracker must look exactly like Jira.
+- Keep Jira transport concerns in `JiraClient`; keep query assembly in `JiraQuery`.
 - Keep matching/resolution logic that both surfaces need in `quick_filters.py`, not duplicated
   under `tui/`.
 - Keep output formatting in `JiraRenderer`; keep TUI orchestration in `tui/app.py`.
