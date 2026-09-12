@@ -7,9 +7,17 @@ from jira_cli.commands.common import get_jira_client, resolve_project
 
 @click.command(name="tui")
 @click.option("--project", "project", "-p", default="", help="Jira project key; defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
-def launch_tui(project: str) -> None:
+@click.option("--demo", is_flag=True, help="Launch the TUI with synthetic demo data for safe screenshots")
+def launch_tui(project: str, demo: bool) -> None:
     """Launch interactive TUI (Terminal User Interface) for Jira issue management."""
     try:
+        if demo:
+            from jira_cli.demo import DEMO_PROJECT_KEY, DemoJiraClient
+            from jira_cli.tui.app import run_tui
+
+            run_tui(DemoJiraClient(), project or DEMO_PROJECT_KEY)
+            return
+
         from jira_cli.tui.app import run_tui
 
         client = get_jira_client()

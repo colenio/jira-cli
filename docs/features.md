@@ -28,7 +28,7 @@ Everything you'd do in Jira Cloud's issue list/board for day-to-day triage — f
 | Browse issues by project/JQL | ✅ | ✅ (CLI + TUI) |
 | Free-text search | ✅ | ✅ `issue find` / TUI `f` |
 | View issue + comments | ✅ | ✅ `issue view --comments` / TUI detail pane |
-| Create / edit / comment | ✅ | ✅        |
+| Create / edit / comment | ✅ | ✅ |
 | Transition workflow status | ✅ | ✅ (by name or transition ID) |
 | Assign issue, incl. "assign to me" | ✅ | ✅ (`issue assign`, TUI `a`, `:assignee=me`) |
 | Quick filters (type/status/assignee/label) | ✅ (board quick-filter chips) | ✅ `:` command bar, always server-side |
@@ -38,13 +38,13 @@ Everything you'd do in Jira Cloud's issue list/board for day-to-day triage — f
 | Fix versions / milestones | ✅ | ✅ `jira version list/create/delete` |
 | User lookup | ✅ | ✅ `jira user me` / `jira user list` / `jira user search` |
 | Sprints / Backlog (Scrum) | ✅ | ❌ not modeled at all |
-| Swimlanes, WIP limits, column config | ✅ | ❌        |
+| Swimlanes, WIP limits, column config | ✅ | ❌ |
 | Bulk edit / bulk transition | ✅ | ❌ (one issue at a time) |
-| Attachments | ✅ | ❌        |
-| Watchers / notifications | ✅ | ❌        |
-| Worklog / time tracking | ✅ | ❌        |
+| Attachments | ✅ | ❌ |
+| Watchers / notifications | ✅ | ❌ |
+| Worklog / time tracking | ✅ | ❌ |
 | Saved filters / dashboards | ✅ | ❌ (JQL is typed fresh each time; no persistence yet) |
-| Roadmap / timeline | ✅ | ❌        |
+| Roadmap / timeline | ✅ | ❌ |
 | Automation rules | ✅ | ❌ (out of scope by design — this is a query/action tool, not a rules engine) |
 
 ## What's missing (candidates for future work)
@@ -87,6 +87,39 @@ the source of truth, not this table.
 
 Two views (`v` toggles): a sortable **table**, and a **board** grouped by status (view-only —
 selection, detail pane, transition/assign/comment work the same in both).
+
+Use `jira tui --demo` to launch the same TUI with synthetic issues, users, comments, and
+milestones. This is intended for safe screenshots and screencasts without exposing customer
+Jira data.
+
+### TUI screenshots
+
+The issue table is the default workspace for triage. It keeps status, assignee, and priority
+visible while the detail pane tracks the selected issue.
+
+![Demo issue table view](img/tui/01-issues-table.png)
+
+The board view uses the same issue source, grouped by status for a compact Kanban-style scan.
+
+![Demo issue board view](img/tui/02-issues-board.png)
+
+The `:` command bar is the main navigation and filtering surface, with suggestions for views,
+resource kinds, and server-side quick filters.
+
+![Demo command palette quick filter](img/tui/03-command-palette-priority.png)
+
+Quick filters run as Jira-side JQL and update the active source context, instead of filtering
+only the currently loaded rows.
+
+![Demo filtered issue view](img/tui/04-filtered-priority.png)
+
+Users are a first-class TUI resource view, matching the `jira user ...` CLI group.
+
+![Demo users resource view](img/tui/05-users-resource.png)
+
+Versions and milestones use their own resource view as well, matching `jira version list`.
+
+![Demo milestones resource view](img/tui/06-milestones-resource.png)
 
 Header shows the current Jira user (via `/myself`, fetched at startup) next to the clock.
 

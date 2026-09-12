@@ -1,3 +1,8 @@
+<!-- markdownlint-disable MD041 -->
+
+[![CI](https://github.com/colenio/jira-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/colenio/jira-cli/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/colenio-jira-cli.svg)](https://pypi.org/project/colenio-jira-cli/)
+
 # Jira CLI
 
 **Think github-cli but for Jira.**
@@ -20,6 +25,24 @@ uvx --from colenio-jira-cli jira-cli issue list --project PROJ
 ```
 
 The PyPI/package name is `colenio-jira-cli`; the installed commands are `jira` and `jira-cli` (both run the same CLI). See [docs/distribution.md](docs/distribution.md) for other install options (pip, venv).
+
+For screenshots, screencasts, or trying the TUI without Jira credentials, use synthetic demo data:
+
+```bash
+jira tui --demo
+```
+
+## Screenshots
+
+The default issue table is optimized for quick triage: type, key, summary, status, assignee,
+and priority stay visible while the detail pane follows the current selection.
+
+![Jira CLI demo issue table](docs/img/tui/01-issues-table.png)
+
+The board view groups the same issue source by workflow status, with Backlog on the left and
+done states on the right.
+
+![Jira CLI demo board view](docs/img/tui/02-issues-board.png)
 
 ## Setup
 

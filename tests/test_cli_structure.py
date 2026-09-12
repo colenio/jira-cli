@@ -44,3 +44,11 @@ def test_issue_group_contains_expected_commands() -> None:
     assert result.exit_code == 0
     for name in REQUIRED_ISSUE_COMMANDS:
         assert name in result.output
+
+
+def test_tui_command_exposes_demo_mode() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["tui", "--help"])
+
+    assert result.exit_code == 0
+    assert "--demo" in result.output
