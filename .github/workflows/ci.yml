@@ -1,32 +1,67 @@
 name: CI
 
 on:
-    pull_request:
-    push:
-        branches:
-            - main
+  pull_request:
+    paths:
+      - "jira_cli/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ci.yml"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "jira_cli/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
 
 jobs:
-    test-and-build:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
-            - name: Sync dependencies
-              run: uv sync --frozen --extra dev
+      - name: Sync dependencies
+        run: uv sync --frozen --extra dev
 
-            - name: Run tests
-              run: uv run pytest -q
+      - name: Run tests
+        run: uv run pytest -q
 
-            - name: Build package
-              run: uv build
+      - name: Build package
+        run: uv build
 
-            - name: Upload dist artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: dist
-                  path: dist/*
+      - name: Upload dist artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  publish-pypi:
+    needs: test-and-build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
