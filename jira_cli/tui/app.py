@@ -936,8 +936,20 @@ class JiraApp(App):
             self.update_issue_detail(issue)
             self._prefetch_comments_for_issue(issue)
 
+    def _supports_board(self) -> bool:
+        """Check whether the active provider context supports board view."""
+        try:
+            desc = self.client.describe()
+            return desc.supports_board
+        except Exception:
+            return True
+
     def action_toggle_board(self) -> None:
         """Toggle between table view and board (status columns) view."""
+        if not self._supports_board():
+            self.notify("Board view is not supported for single repository targets", severity="warning")
+            return
+
         next_board_visible = not self.board_visible if self.active_kind == "issues" else True
         self._show_resource("issues", board=next_board_visible)
 

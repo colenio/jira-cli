@@ -12,9 +12,10 @@ from jira_cli.models import JiraIssue, JiraIssueField, JiraSearchResult
 
 from .base import ActionDescriptor, FilterDescriptor, ProviderDescriptor, ResourceDescriptor, SortDescriptor
 
-GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
+_REPO_GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="github",
     query_language="GitHub issue query",
+    supports_board=False,
     resources=(
         ResourceDescriptor(
             kind="issues",
@@ -197,6 +198,7 @@ class GitHubProjectProvider:
         return ProviderDescriptor(
             name="github",
             query_language="GitHub project filter",
+            supports_board=True,
             resources=(
                 ResourceDescriptor(
                     kind="issues",
@@ -728,46 +730,7 @@ def _matches_item(item: dict[str, Any], filters: dict[str, str]) -> bool:
 
     return True
 
-GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
-    name="github",
-    query_language="GitHub issue query",
-    resources=(
-        ResourceDescriptor(
-            kind="issues",
-            fields=("key", "summary", "status", "assignee", "labels", "milestone", "updated"),
-            filters=(
-                FilterDescriptor(name="status", field="state"),
-                FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
-                FilterDescriptor(name="label", field="labels"),
-                FilterDescriptor(name="milestone", field="milestone"),
-                FilterDescriptor(name="key", field="number"),
-            ),
-            sorts=(
-                SortDescriptor(name="created", field="created", default_direction="desc"),
-                SortDescriptor(name="updated", field="updated", default_direction="desc"),
-                SortDescriptor(name="comments", field="comments", default_direction="desc"),
-            ),
-            actions=(
-                ActionDescriptor(name="transition", requires_comment=False),
-                ActionDescriptor(name="assign", requires_comment=False),
-                ActionDescriptor(name="comment", requires_comment=False),
-            ),
-        ),
-        ResourceDescriptor(
-            kind="users",
-            fields=("displayName", "emailAddress", "active", "accountId"),
-            filters=(FilterDescriptor(name="query", field="query"),),
-        ),
-        ResourceDescriptor(
-            kind="versions",
-            fields=("name", "description", "releaseDate", "released", "archived"),
-        ),
-        ResourceDescriptor(
-            kind="labels",
-            fields=("name", "color", "description", "issueCount"),
-        ),
-    ),
-)
+GITHUB_PROVIDER_DESCRIPTOR = _REPO_GITHUB_PROVIDER_DESCRIPTOR
 
 
 def is_project_target(target: str) -> bool:

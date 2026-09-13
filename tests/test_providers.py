@@ -151,11 +151,15 @@ def test_registry_interactive_context_selection(monkeypatch) -> None:
 
 
 def test_github_project_provider_to_jira_issue() -> None:
-    from jira_cli.providers.github import GitHubProjectProvider
+    from jira_cli.providers.github import GITHUB_PROVIDER_DESCRIPTOR, GitHubProjectProvider
+
+    assert GITHUB_PROVIDER_DESCRIPTOR.supports_board is False
 
     provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
     provider._status_options = {"Todo": "opt1", "In Progress": "opt2", "Done": "opt3"}
     provider._item_cache = {}
+
+    assert provider.describe().supports_board is True
 
     node = {
         "id": "PVTI_123456",
@@ -171,6 +175,13 @@ def test_github_project_provider_to_jira_issue() -> None:
         "fieldValueByName": {"name": "In Progress", "optionId": "opt2"},
         "updatedAt": "2026-09-13T10:00:00Z",
     }
+
+    issue = provider._to_jira_issue(node)
+
+    assert issue.key == "jira-cli#42"
+    assert issue.fields.summary == "Test Issue"
+    assert issue.fields.status == {"name": "In Progress"}
+    assert issue.fields.assignee == {"accountId": "mkoertgen", "displayName": "Marcel Körtgen"}
 
     issue = provider._to_jira_issue(node)
 
