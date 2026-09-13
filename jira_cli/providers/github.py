@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import timezone
 from typing import Optional
 
-from github import Auth, Github
-from github.GithubObject import NotSet
+from githubkit import GitHub
 
 from jira_cli.models import JiraIssue, JiraIssueField, JiraSearchResult
 
@@ -57,8 +56,9 @@ class GitHubProvider:
     def __init__(self, repository: str, token: str):
         self.repository = repository
         self.base_url = f"https://github.com/{repository}"
-        self._github = Github(auth=Auth.Token(token))
-        self._repo = self._github.get_repo(repository)
+        self._github = GitHub(token)
+        self._owner, self._repo_name = repository.split("/", 1)
+        self._repo = self._github.rest.repos.get(self._owner, self._repo_name).parsed_data
 
     def describe(self) -> ProviderDescriptor:
         """Describe GitHub resources and read-only capabilities."""
@@ -76,11 +76,23 @@ class GitHubProvider:
         filters, sort_field, sort_direction = _parse_query(jql)
         state = _github_state(filters.get("status"))
         labels = filters.get("labels")
-        assignee = self._assignee_login(filters.get("assignee")) or NotSet
-        milestone = _milestone_object(self._repo, filters.get("milestone")) or NotSet
-        label_filter = [labels] if labels else NotSet
+        params: dict = {"state": state, "per_page": 100}
+        if labels:
+            params["labels"] = labels
+        if filters.get("assignee"):
+            params["assignee"] = self._assignee_login(filters["assignee"])
+        milestone = _milestone_number(self._github, self._owner, self._repo_name, filters.get("milestone"))
+        if milestone:
+            params["milestone"] = milestone
 
-        issues = list(self._repo.get_issues(state=state, assignee=assignee, labels=label_filter, milestone=milestone))
+        issues = list(
+            self._github.rest.paginate(
+                self._github.rest.issues.list_for_repo,
+                owner=self._owner,
+                repo=self._repo_name,
+                **params,
+            )
+        )
         issues = [_issue for _issue in issues if _matches_issue(_issue, filters)]
         issues = _sort_issues(issues, sort_field, sort_direction)
         page = issues[start_at : start_at + max_results]
@@ -93,12 +105,15 @@ class GitHubProvider:
 
     def get_current_user(self) -> dict:
         """Return the authenticated GitHub user."""
-        user = self._github.get_user()
+        user = self._github.rest.users.get_authenticated().parsed_data
         return _github_user_dict(user)
 
     def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
         """Return repository assignees/collaborators assignable to GitHub issues."""
-        return [_github_user_dict(user) for user in list(self._repo.get_assignees())[:max_results]]
+        users = self._github.rest.issues.list_assignees(
+            self._owner, self._repo_name, per_page=max_results
+        ).parsed_data
+        return [_github_user_dict(user) for user in users[:max_results]]
 
     def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
         """Search repository assignees by login/name."""
@@ -116,20 +131,42 @@ class GitHubProvider:
 
     def list_versions(self, project_key: str) -> list[dict]:
         """Return repository milestones in the existing version/milestone shape."""
-        return [_milestone_dict(milestone) for milestone in self._repo.get_milestones(state="all")]
+        milestones = self._github.rest.issues.list_milestones(
+            self._owner, self._repo_name, state="all", per_page=100
+        ).parsed_data
+        return [_milestone_dict(milestone) for milestone in milestones]
 
     def list_labels(self, project_key: str) -> list[dict]:
         """Return repository labels."""
-        return [_label_dict(label, self._label_issue_count(label)) for label in self._repo.get_labels()]
+        labels = self._github.rest.issues.list_labels_for_repo(
+            self._owner, self._repo_name, per_page=100
+        ).parsed_data
+        return [_label_dict(label, self._label_issue_count(label)) for label in labels]
 
     def _label_issue_count(self, label) -> int:
         """Return open+closed issue count for one label."""
-        return self._repo.get_issues(state="all", labels=[label]).totalCount
+        return sum(
+            1
+            for _ in self._github.rest.paginate(
+                self._github.rest.issues.list_for_repo,
+                owner=self._owner,
+                repo=self._repo_name,
+                state="all",
+                labels=label.name,
+                per_page=100,
+            )
+        )
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """Return comments for a GitHub issue key like '#123' or 'owner/repo#123'."""
-        issue = self._repo.get_issue(_issue_number(key))
-        return [_comment_dict(comment) for comment in issue.get_comments()]
+        comments = self._github.rest.paginate(
+            self._github.rest.issues.list_comments,
+            owner=self._owner,
+            repo=self._repo_name,
+            issue_number=_issue_number(key),
+            per_page=100,
+        )
+        return [_comment_dict(comment) for comment in comments]
 
     def add_comment(self, key: str, body: str | dict, use_adf: bool = False) -> dict:
         """Read-only provider: comments are not supported yet."""
@@ -149,7 +186,8 @@ class GitHubProvider:
 
     def _to_jira_issue(self, issue) -> JiraIssue:
         labels = [label.name for label in issue.labels]
-        assignee = _github_user_dict(issue.assignee) if issue.assignee else None
+        assignees = getattr(issue, "assignees", []) or []
+        assignee = _github_user_dict(assignees[0]) if assignees else None
         issue_type = _label_value(labels, "type") or "Issue"
         priority = _label_value(labels, "priority") or ""
         return JiraIssue(
@@ -238,13 +276,14 @@ def _github_state(status: str | None) -> str:
     return "open"
 
 
-def _milestone_object(repo, title: str | None):
+def _milestone_number(client: GitHub, owner: str, repo: str, title: str | None) -> str:
     if not title:
-        return None
-    for milestone in repo.get_milestones(state="all"):
+        return ""
+    milestones = client.rest.issues.list_milestones(owner, repo, state="all", per_page=100).parsed_data
+    for milestone in milestones:
         if milestone.title == title:
-            return milestone
-    return None
+            return str(milestone.number)
+    return ""
 
 
 def _github_user_dict(user) -> dict:
