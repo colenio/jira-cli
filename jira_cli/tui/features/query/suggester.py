@@ -18,6 +18,7 @@ _VERBS = [
     "me",
     "users",
     "user=",
+    "labels",
     "versions",
     "milestones",
     "overdue",

@@ -14,6 +14,7 @@ from .base import FilterDescriptor, ProviderDescriptor, ResourceDescriptor, Sort
 
 GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="github",
+    query_language="GitHub issue query",
     resources=(
         ResourceDescriptor(
             kind="issues",
@@ -39,6 +40,10 @@ GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
+        ),
+        ResourceDescriptor(
+            kind="labels",
+            fields=("name", "color", "description", "issueCount"),
         ),
     ),
 )
@@ -112,6 +117,14 @@ class GitHubProvider:
     def list_versions(self, project_key: str) -> list[dict]:
         """Return repository milestones in the existing version/milestone shape."""
         return [_milestone_dict(milestone) for milestone in self._repo.get_milestones(state="all")]
+
+    def list_labels(self, project_key: str) -> list[dict]:
+        """Return repository labels."""
+        return [_label_dict(label, self._label_issue_count(label)) for label in self._repo.get_labels()]
+
+    def _label_issue_count(self, label) -> int:
+        """Return open+closed issue count for one label."""
+        return self._repo.get_issues(state="all", labels=[label]).totalCount
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """Return comments for a GitHub issue key like '#123' or 'owner/repo#123'."""
@@ -249,6 +262,15 @@ def _milestone_dict(milestone) -> dict:
         "releaseDate": _date_text(due_on),
         "released": getattr(milestone, "state", "open") == "closed",
         "archived": False,
+    }
+
+
+def _label_dict(label, issue_count: int | str = "") -> dict:
+    return {
+        "name": getattr(label, "name", "?"),
+        "color": getattr(label, "color", "") or "",
+        "description": getattr(label, "description", "") or "",
+        "issueCount": issue_count,
     }
 
 

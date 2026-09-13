@@ -3,6 +3,7 @@
 import pytest
 
 from jira_cli.models import IssueRow
+from jira_cli.providers import ProviderContext, ProviderDescriptor
 from jira_cli.quick_filters import normalize_for_match
 from jira_cli.tui.app import JiraApp
 from jira_cli.tui.features.board.service import group_by_status
@@ -25,6 +26,9 @@ class FakeJiraClient:
         self.comment_calls.append(key)
         return []
 
+    def describe(self) -> ProviderDescriptor:
+        return ProviderDescriptor(name="fake", query_language="JQL")
+
     def get_current_user(self) -> dict:
         return {"displayName": "Marcel Körtgen", "emailAddress": "marcel@example.com", "accountId": "abc-123"}
 
@@ -40,6 +44,9 @@ class FakeJiraClient:
 
     def list_versions(self, project_key: str) -> list[dict]:
         return [{"name": "2026.09", "released": False, "archived": False, "releaseDate": "2026-09-30"}]
+
+    def list_labels(self, project_key: str) -> list[dict]:
+        return [{"name": "backend", "issueCount": 2}, {"name": "frontend", "issueCount": 1}]
 
 
 def _issue_labels(issue: IssueRow) -> list[str]:
@@ -172,6 +179,25 @@ async def test_topbar_user_does_not_overlap_clock(app):
         user = app.query_one("#topbar_user")
         clock = app.query_one("#topbar_clock")
         assert user.region.x + user.region.width <= clock.region.x
+
+
+def test_provider_query_placeholder_uses_github_example(sample_issues):
+    client = FakeJiraClient()
+    app = JiraApp(
+        client,
+        "colenio/jira-cli",
+        sample_issues,
+        context=ProviderContext(
+            name="github:colenio/jira-cli",
+            provider="github",
+            target="colenio/jira-cli",
+            label="GitHub / colenio/jira-cli",
+        ),
+    )
+
+    assert app._provider_query_placeholder() == (
+        'GitHub issue query, e.g. status = "all" AND labels = "bug" ORDER BY updated DESC'
+    )
 
 
 async def test_type_quick_filter_runs_server_side(app):
@@ -316,6 +342,17 @@ async def test_milestones_command_shows_versions(app):
         assert app.query_one("#version_table").display is True
         assert app.query_one("#issue_table").display is False
         assert "2026.09" in detail.render()
+
+
+async def test_labels_command_shows_label_resource(app):
+    async with app.run_test() as pilot:
+        await app._submit_command("labels")
+        await pilot.pause()
+        detail = app.query_one("#label_detail")
+        assert app.active_kind == "labels"
+        assert app.query_one("#label_table").display is True
+        assert app.query_one("#issue_table").display is False
+        assert "backend" in detail.render()
 
 
 async def test_key_quick_filter_jumps_to_exact_issue(app):

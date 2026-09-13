@@ -8,6 +8,7 @@ from .base import ActionDescriptor, FilterDescriptor, ProviderDescriptor, Resour
 
 JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="jira",
+    query_language="JQL",
     resources=(
         ResourceDescriptor(
             kind="issues",
@@ -44,6 +45,10 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
             actions=(ActionDescriptor(name="create"), ActionDescriptor(name="delete"),),
+        ),
+        ResourceDescriptor(
+            kind="labels",
+            fields=("name", "issueCount"),
         ),
     ),
 )

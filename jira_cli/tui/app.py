@@ -3,6 +3,7 @@
 import webbrowser
 from typing import Literal
 
+from rich.markup import escape
 from textual.app import ComposeResult, App
 from textual.widgets import Label, DataTable, Footer, Input, ListView
 from textual.binding import Binding
@@ -14,6 +15,7 @@ from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
 from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
+from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
 from jira_cli.tui.features.query.service import (
     QueryMode,
     QUICK_FILTER_DIMENSIONS,
@@ -29,7 +31,7 @@ from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidg
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
 from jira_cli.tui.header import JiraTopBar
 
-ResourceKind = Literal["issues", "users", "versions"]
+ResourceKind = Literal["issues", "users", "versions", "labels"]
 
 
 class JiraApp(App):
@@ -40,7 +42,7 @@ class JiraApp(App):
         Binding("p", "reset_source", "Project", show=True),
         Binding("slash", "focus_filter", "Filter", show=True),
         Binding("f", "focus_find", "Find", show=True),
-        Binding("j", "focus_jql", "JQL", show=True),
+        Binding("j", "focus_jql", "Query", show=True),
         Binding("colon", "focus_command", "Command", show=True),
         Binding("v", "toggle_board", "Board", show=True),
         Binding("t", "transition", "Transition", show=True),
@@ -74,6 +76,10 @@ class JiraApp(App):
     }
 
     #version_table {
+        height: 1fr;
+    }
+
+    #label_table {
         height: 1fr;
     }
 
@@ -115,6 +121,8 @@ class JiraApp(App):
         self.issues = issues
         self.users: list[dict] = []
         self.versions: list[dict] = []
+        self.labels: list[dict] = []
+        self.query_language = self.client.describe().query_language
         self.current_user_display_name = current_user_display_name
         self.query = JiraQuery(client)
         self.quick_filter_resolver = QuickFilterResolver(client, project_key)
@@ -151,9 +159,11 @@ class JiraApp(App):
         yield BoardWidget(self.issues, id="issue_board")
         yield UserTableWidget(self.users, id="user_table")
         yield VersionTableWidget(self.versions, id="version_table")
+        yield LabelTableWidget(self.labels, id="label_table")
         yield IssueDetailWidget(id="issue_detail")
         yield UserDetailWidget(id="user_detail")
         yield VersionDetailWidget(id="version_detail")
+        yield LabelDetailWidget(id="label_detail")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -170,8 +180,10 @@ class JiraApp(App):
         board.display = False
         self.query_one("#user_table", UserTableWidget).display = False
         self.query_one("#version_table", VersionTableWidget).display = False
+        self.query_one("#label_table", LabelTableWidget).display = False
         self.query_one("#user_detail", UserDetailWidget).display = False
         self.query_one("#version_detail", VersionDetailWidget).display = False
+        self.query_one("#label_detail", LabelDetailWidget).display = False
         table.focus()
         if self.issues:
             self.update_issue_detail(self.issues[0])
@@ -179,7 +191,9 @@ class JiraApp(App):
 
     def _update_query_context(self) -> None:
         """Render active remote query context."""
-        mode_text, source_text = build_query_labels(self.project_key, self.query_mode, self.query_expression)
+        mode_text, source_text = build_query_labels(
+            self.project_key, self.query_mode, self.query_expression, self.query_language
+        )
         if self.active_kind != "issues":
             mode_text = f"MODE: {self.active_kind.upper()}"
 
@@ -233,14 +247,18 @@ class JiraApp(App):
         self.query_one("#issue_board", BoardWidget).display = kind == "issues" and board
         self.query_one("#user_table", UserTableWidget).display = kind == "users"
         self.query_one("#version_table", VersionTableWidget).display = kind == "versions"
+        self.query_one("#label_table", LabelTableWidget).display = kind == "labels"
         self.query_one("#issue_detail", IssueDetailWidget).display = kind == "issues"
         self.query_one("#user_detail", UserDetailWidget).display = kind == "users"
         self.query_one("#version_detail", VersionDetailWidget).display = kind == "versions"
+        self.query_one("#label_detail", LabelDetailWidget).display = kind == "labels"
 
         if kind == "issues":
             widget = self.query_one("#issue_board", BoardWidget) if board else self.query_one("#issue_table", IssueTableWidget)
         elif kind == "users":
             widget = self.query_one("#user_table", UserTableWidget)
+        elif kind == "labels":
+            widget = self.query_one("#label_table", LabelTableWidget)
         else:
             widget = self.query_one("#version_table", VersionTableWidget)
         widget.focus()
@@ -422,7 +440,7 @@ class JiraApp(App):
             await self._submit_by_mode(expression)
             self.input_mode = "none"
         except Exception as e:
-            self.notify(f"Query failed: {e}", severity="error")
+            self.notify(f"Query failed: {escape(str(e))}", severity="error")
 
     def action_focus_filter(self) -> None:
         """Show and focus filter input."""
@@ -436,7 +454,7 @@ class JiraApp(App):
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = self.command_suggester
         self._show_query_input(
-            "issues/table/board | users/user=<q>/versions | type/status/assignee/label/priority=<value> | order=<field> | overdue[=me] | clear"
+            "issues/table/board | users/user=<q>/labels/versions | type/status/assignee/label/priority=<value> | order=<field> | overdue[=me] | clear"
         )
 
     async def _submit_command(self, expression: str) -> None:
@@ -463,6 +481,9 @@ class JiraApp(App):
             return
         if verb == "users":
             self._show_assignable_users()
+            return
+        if verb == "labels":
+            self._show_labels()
             return
         if verb == "user":
             if not arg:
@@ -527,7 +548,7 @@ class JiraApp(App):
         order_clause = order_by_clause(self.order_by)
         if order_clause:
             jql = f"{jql} {order_clause}"
-        await self._run_jql_context(jql, f"Source: {jql}")
+        await self._run_jql_context(jql, f"Source: {self.query_language.lower()} {jql}")
         self.notify(message)
 
     def _show_current_user(self) -> None:
@@ -547,6 +568,10 @@ class JiraApp(App):
         """Show project fix versions/milestones as the active version resource view."""
         self._replace_versions(list_project_versions(self.client, self.project_key), f"Source: {title.lower()} in {self.project_key}")
 
+    def _show_labels(self) -> None:
+        """Show project/repository labels as the active label resource view."""
+        self._replace_labels(list_project_labels(self.client, self.project_key), f"Source: labels in {self.project_key}")
+
     def _replace_users(self, users: list[dict], source_label: str) -> None:
         """Replace user rows and switch to the users resource view."""
         self.users = users
@@ -565,6 +590,15 @@ class JiraApp(App):
         self._show_resource("versions")
         self.query_one("#query_context", Label).update(source_label)
 
+    def _replace_labels(self, labels: list[dict], source_label: str) -> None:
+        """Replace label rows and switch to the labels resource view."""
+        self.labels = labels
+        table = self.query_one("#label_table", LabelTableWidget)
+        selected = table.replace_rows(labels)
+        self.query_one("#label_detail", LabelDetailWidget).update_label(selected)
+        self._show_resource("labels")
+        self.query_one("#query_context", Label).update(source_label)
+
     def action_focus_find(self) -> None:
         """Show and focus find query input."""
         self.input_mode = "find"
@@ -575,13 +609,21 @@ class JiraApp(App):
         self._show_query_input("Find text in summary/description and press Enter", self.last_find_expression)
 
     def action_focus_jql(self) -> None:
-        """Show and focus JQL query input."""
+        """Show and focus provider query input."""
         self.input_mode = "jql"
         mode_label = self.query_one("#mode_context", Label)
-        mode_label.update("MODE: JQL (INPUT)")
+        mode_label.update(f"MODE: {self.query_language.upper()} (INPUT)")
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = None
-        self._show_query_input("Enter JQL and press Enter", self.last_jql_expression)
+        self._show_query_input(self._provider_query_placeholder(), self.last_jql_expression)
+
+    def _provider_query_placeholder(self) -> str:
+        """Return a provider-specific example for the free query input."""
+        if self.context.provider == "github":
+            return 'GitHub issue query, e.g. status = "all" AND labels = "bug" ORDER BY updated DESC'
+        if self.context.provider == "demo":
+            return 'Demo query, e.g. priority = "Highest" ORDER BY updated DESC'
+        return f'JQL, e.g. project = {self.project_key} AND status = "In Progress" ORDER BY updated DESC'
 
     def action_transition(self) -> None:
         """Prompt for transition ID or name and execute transition."""
@@ -754,6 +796,10 @@ class JiraApp(App):
             version = self.query_one("#version_table", VersionTableWidget).get_selected_version()
             self.query_one("#version_detail", VersionDetailWidget).update_version(version)
             return
+        if event.data_table.id == "label_table":
+            label = self.query_one("#label_table", LabelTableWidget).get_selected_label()
+            self.query_one("#label_detail", LabelDetailWidget).update_label(label)
+            return
         if event.data_table.id != "issue_table":
             return
         table = self.query_one("#issue_table", IssueTableWidget)
@@ -823,13 +869,16 @@ class JiraApp(App):
             if self.active_kind == "versions":
                 self._show_versions("Versions")
                 return
+            if self.active_kind == "labels":
+                self._show_labels()
+                return
             rows = self._run_remote_query()
             self.all_issues = rows
             self._update_query_context()
             filter_input = self.query_one("#filter_input", Input)
             await self._apply_filter(filter_input.value)
         except Exception as e:
-            self.notify(f"Error refreshing: {e}", severity="error")
+            self.notify(f"Error refreshing: {escape(str(e))}", severity="error")
 
     def action_open_issue(self) -> None:
         """Open selected issue in browser."""
@@ -853,8 +902,8 @@ class JiraApp(App):
             "[cyan]p[/cyan]        Reset source to project\n"
             "[cyan]/[/cyan]        Focus live filter\n"
             "[cyan]f[/cyan]        Find by text (summary/description)\n"
-            "[cyan]j[/cyan]        Run JQL query\n"
-            "[cyan]:[/cyan]        Command bar: issues/table/board|users/user=<q>/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
+            f"[cyan]j[/cyan]        Run {self.query_language} query\n"
+            "[cyan]:[/cyan]        Command bar: issues/table/board|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
             "[cyan]v[/cyan]        Toggle board view (grouped by status)\n"
             "[cyan]Enter[/cyan]    Execute active query input\n"
             "[cyan]t[/cyan]        Transition selected issue\n"

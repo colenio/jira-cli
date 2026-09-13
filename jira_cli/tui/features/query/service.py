@@ -9,9 +9,11 @@ from jira_cli.quick_filters import resolve_value as resolve_quick_filter_value
 QueryMode = Literal["project", "find", "jql"]
 
 
-def build_query_labels(project_key: str, query_mode: QueryMode, query_expression: str) -> tuple[str, str]:
+def build_query_labels(
+    project_key: str, query_mode: QueryMode, query_expression: str, query_language: str = "JQL"
+) -> tuple[str, str]:
     """Build mode and source labels for the current query state."""
-    mode_label = f"MODE: {query_mode.upper()}"
+    mode_label = f"MODE: {query_language.upper()}" if query_mode == "jql" else f"MODE: {query_mode.upper()}"
 
     if query_mode == "project":
         return mode_label, f"Source: project={project_key}"
@@ -21,7 +23,7 @@ def build_query_labels(project_key: str, query_mode: QueryMode, query_expression
     snippet = query_expression.strip().replace("\n", " ")
     if len(snippet) > 80:
         snippet = f"{snippet[:77]}..."
-    return mode_label, f"Source: jql {snippet}"
+    return mode_label, f"Source: {query_language.lower()} {snippet}"
 
 
 def run_remote_query(

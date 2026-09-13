@@ -3,6 +3,7 @@
 import pytest
 
 from jira_cli.models import IssueRow
+from jira_cli.tui.features.query.service import build_query_labels
 from jira_cli.tui.features.query.suggester import CommandSuggester
 
 
@@ -30,7 +31,15 @@ async def test_suggests_verb(suggester):
 async def test_suggests_user_and_version_verbs(suggester):
     assert await suggester.get_suggestion("iss") == "issues"
     assert await suggester.get_suggestion("use") == "users"
+    assert await suggester.get_suggestion("lab") == "labels"
     assert await suggester.get_suggestion("ver") == "versions"
+
+
+def test_query_labels_use_provider_query_language():
+    assert build_query_labels("repo", "jql", "project = repo", "GitHub issue query") == (
+        "MODE: GITHUB ISSUE QUERY",
+        "Source: github issue query project = repo",
+    )
 
 
 async def test_suggests_value_after_verb(suggester):

@@ -25,8 +25,11 @@ def test_demo_provider_describes_same_core_resources() -> None:
 
 def test_github_provider_describes_read_only_resources() -> None:
     issues = GITHUB_PROVIDER_DESCRIPTOR.resource("issues")
+    labels = GITHUB_PROVIDER_DESCRIPTOR.resource("labels")
 
     assert issues is not None
+    assert labels is not None
+    assert GITHUB_PROVIDER_DESCRIPTOR.query_language == "GitHub issue query"
     assert {item.name for item in issues.filters} >= {"status", "assignee", "label", "milestone", "key"}
     assert {item.name for item in issues.sorts} >= {"created", "updated", "comments"}
     assert not issues.actions
@@ -83,3 +86,19 @@ def test_github_provider_descriptor_method_without_network() -> None:
     provider = GitHubProvider.__new__(GitHubProvider)
 
     assert provider.describe().name == "github"
+
+
+def test_github_label_dict_includes_issue_count() -> None:
+    from jira_cli.providers.github import _label_dict
+
+    class Label:
+        name = "bug"
+        color = "d73a4a"
+        description = "Something is not working"
+
+    assert _label_dict(Label(), issue_count=3) == {
+        "name": "bug",
+        "color": "d73a4a",
+        "description": "Something is not working",
+        "issueCount": 3,
+    }

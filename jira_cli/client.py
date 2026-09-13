@@ -198,6 +198,24 @@ class JiraClient:
 
         return [v.raw for v in self._jira.project_versions(project_key)]
 
+    def list_labels(self, project_key: str) -> list[dict]:
+        """List labels used by issues in a project."""
+        if self.dry_run:
+            return []
+
+        raw = self._jira.search_issues(
+            jql_str=f"project = {project_key}",
+            maxResults=100,
+            fields=["labels"],
+            json_result=True,
+            use_post=True,
+        )
+        counts: dict[str, int] = {}
+        for issue in raw.get("issues", []):
+            for label in issue.get("fields", {}).get("labels", []) or []:
+                counts[label] = counts.get(label, 0) + 1
+        return [{"name": name, "issueCount": count} for name, count in sorted(counts.items())]
+
     def create_version(
         self, project_key: str, name: str, description: str = "", release_date: Optional[str] = None
     ) -> dict:

@@ -8,6 +8,7 @@ from .base import ActionDescriptor, FilterDescriptor, ProviderDescriptor, Resour
 
 DEMO_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="demo",
+    query_language="demo query",
     resources=(
         ResourceDescriptor(
             kind="issues",
@@ -40,6 +41,10 @@ DEMO_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
+        ),
+        ResourceDescriptor(
+            kind="labels",
+            fields=("name", "issueCount"),
         ),
     ),
 )

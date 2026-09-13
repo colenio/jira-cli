@@ -48,31 +48,19 @@ Date: 2026-07-01
 - If expiration is within 2 weeks, show a warning (or on CLI startup as stderr hint).
 - Relates to the current "expired token -> silent empty result" issue: Jira Cloud API tokens don't expose expiry via a simple REST call today, so this needs research into what's available (Atlassian API token management API, or documenting a manual "last known expiry" config value).
 
-## 8) Provider-Driven Resource Model (post-0.5.0)
+## Next: Transition UX and Dogfooding
 
-- Introduce provider descriptors instead of hard-coding Jira-like filters/actions in CLI/TUI:
-  - resources: issues, users, milestones/versions
-  - fields: provider-native fields such as priority, labels, status, weight, epic
-  - filters/sorts: data-driven per provider and per resource
-  - actions: capability-driven per provider and selected item
-- Keep Jira and demo mode as the first two providers behind the same abstraction.
-- Add GitHub Issues as the first external read-only provider after Jira/demo are cleanly adapted.
-- Prefer an official Python GitHub client for the GitHub provider.
-- Make GitHub provider CWD-aware like `gh`:
-  - infer `owner/repo` from the current Git remote when possible
-  - support an explicit repository target equivalent to `gh -R owner/name`
-  - consider reusing `gh` authentication or token discovery instead of asking for duplicate credentials
-- Keep GitLab Issues as a later provider; account for GitLab-specific concepts such as epics and weights.
-- Revisit project/package naming once a second real provider exists; `jira-cli` is appropriate until then, but a future generalized tool likely wants a name like `tracker-cli` or `issue-cli`.
-
-Suggested sequence:
-
-1. Continue extracting a clean `IssueProvider`/resource-provider abstraction and adapt Jira + demo mode to it.
-2. Add a GitHub Issues read-only provider.
-3. Validate day-to-day transition ergonomics in the TUI before expanding write support.
-4. Dogfood the GitHub provider by transferring this roadmap into GitHub Issues from the TUI.
-
-Research notes:
-
-- GitHub now has sub-issues/parent-child-style relationships; verify current API/client support before declaring parent/child unsupported.
-- Board transition UX should support "move selected issue to next column + mandatory comment" and "transition to \<state\> + mandatory comment". This likely belongs in provider data/config: available transitions/actions should come from the provider, not from hard-coded Jira assumptions.
+- Make board transitions practical for daily work:
+  - move the selected issue to the next board column and require a comment
+  - support explicit `transition to <state> + comment`
+  - keep available actions provider-driven rather than Jira-hardcoded
+- Validate Jira transitions with real everyday workflows before adding more write actions.
+- Verify GitHub sub-issues/parent-child support and map it into the provider relationship model.
+- Add the remaining GitHub write operations needed for dogfooding this roadmap:
+  - create issues from CLI/TUI
+  - update labels, status, assignee, milestone, and comments
+  - create parent/child relationships where GitHub supports them
+- Transfer this roadmap into GitHub Issues through the CLI/TUI and use that repository as the
+  real-world transition/provider testbed.
+- Keep GitLab as a later provider; account for epics and weights when its adapter is designed.
+- Revisit `jira-cli` versus a generalized name such as `tracker-cli` after GitHub dogfooding.

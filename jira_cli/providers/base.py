@@ -56,6 +56,7 @@ class ProviderDescriptor(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
+    query_language: str = "query"
     resources: tuple[ResourceDescriptor, ...] = ()
 
     def resource(self, kind: str) -> ResourceDescriptor | None:
@@ -116,6 +117,10 @@ class IssueTrackerProvider(Protocol):
 
     def list_versions(self, project_key: str) -> list[dict]:
         """List milestones/versions for a project/repository context."""
+        ...
+
+    def list_labels(self, project_key: str) -> list[dict]:
+        """List labels/tags for a project/repository context."""
         ...
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:

@@ -126,6 +126,14 @@ class DemoJiraClient:
         """Return synthetic fix versions/milestones."""
         return list(_DEMO_VERSIONS)
 
+    def list_labels(self, project_key: str) -> list[dict]:
+        """Return synthetic labels with issue counts."""
+        counts: dict[str, int] = {}
+        for issue in _DEMO_ISSUES:
+            for label in issue["labels"]:
+                counts[label] = counts.get(label, 0) + 1
+        return [{"name": name, "issueCount": count} for name, count in sorted(counts.items())]
+
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """Return synthetic comments for one issue."""
         return list(_DEMO_COMMENTS.get(key, []))
