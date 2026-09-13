@@ -15,6 +15,7 @@ _VERBS = [
     "board",
     "issues",
     "clear",
+    "next",
     "me",
     "users",
     "user=",

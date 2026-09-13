@@ -13,6 +13,7 @@ from jira_cli.providers import IssueTrackerProvider, ProviderContext
 from jira_cli.query import JiraQuery, order_by_clause
 from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
+from jira_cli.tui.features.board.service import DEFAULT_STATUS_ORDER
 from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
@@ -141,6 +142,7 @@ class JiraApp(App):
         self.active_kind: ResourceKind = "issues"
         self.input_mode: Literal["find", "jql", "command", "transition", "assign", "comment", "none"] = "none"
         self.pending_issue_key = ""
+        self.pending_transition_id = ""
         self.transition_choice_map: dict[str, str] = {}
         self.board_visible = False
         self.comment_feature = JiraCommentFeature(client)
@@ -375,12 +377,14 @@ class JiraApp(App):
                 self.pending_issue_key,
                 expression,
                 self.transition_choice_map,
+                default_transition_id=self.pending_transition_id,
             )
         except ValueError as value_error:
             self.notify(str(value_error), severity="error")
             return
 
         self.notify(message)
+        self.pending_transition_id = ""
         await self.action_refresh()
 
     async def _submit_assign(self, expression: str) -> None:
@@ -469,6 +473,21 @@ class JiraApp(App):
             return
         if verb == "issues":
             self._show_resource("issues", board=False)
+            return
+        if verb == "next":
+            issue = self._selected_issue()
+            try:
+                context = self.workflow_feature.prepare_next_transition_action(issue, DEFAULT_STATUS_ORDER)
+            except ValueError as value_error:
+                self.notify(str(value_error), severity="warning")
+                return
+            self.pending_issue_key = context.issue_key
+            self.pending_transition_id = context.default_transition_id
+            self.input_mode = context.input_mode
+            self.query_one("#mode_context", Label).update(context.mode_label)
+            self.transition_choice_map = context.choice_map
+            self.notify(context.notice, timeout=8)
+            self._show_query_input(context.placeholder)
             return
         if verb == "clear":
             self.type_filter = self.status_filter = self.assignee_filter = self.label_filter = self.priority_filter = ""
@@ -638,6 +657,7 @@ class JiraApp(App):
             return
 
         self.pending_issue_key = context.issue_key
+        self.pending_transition_id = context.default_transition_id
         self.input_mode = context.input_mode
         mode_label = self.query_one("#mode_context", Label)
         mode_label.update(context.mode_label)
@@ -903,7 +923,7 @@ class JiraApp(App):
             "[cyan]/[/cyan]        Focus live filter\n"
             "[cyan]f[/cyan]        Find by text (summary/description)\n"
             f"[cyan]j[/cyan]        Run {self.query_language} query\n"
-            "[cyan]:[/cyan]        Command bar: issues/table/board|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
+            "[cyan]:[/cyan]        Command bar: issues/table/board|next|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
             "[cyan]v[/cyan]        Toggle board view (grouped by status)\n"
             "[cyan]Enter[/cyan]    Execute active query input\n"
             "[cyan]t[/cyan]        Transition selected issue\n"

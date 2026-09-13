@@ -17,6 +17,7 @@ class TransitionActionContext:
     choice_map: dict[str, str]
     notice: str
     placeholder: str
+    default_transition_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,12 +98,53 @@ class JiraWorkflowFeature:
             mode_label="MODE: TRANSITION (INPUT)",
             choice_map=choice_map,
             notice="Transitions: " + " | ".join(labels),
-            placeholder="Transition ID or name; optional comment with: <transition> | <comment>",
+            placeholder="Transition ID or name | mandatory comment",
         )
 
-    def submit_transition_expression(self, issue_key: str, expression: str, choice_map: dict[str, str]) -> str:
+    def prepare_next_transition_action(
+        self, issue: IssueRow | None, status_order: list[str]
+    ) -> TransitionActionContext:
+        """Prepare the transition to the next known board status."""
+        if not issue:
+            raise ValueError("No issue selected")
+
+        transitions = self._client.get_transitions(issue.key)
+        current_index = status_order.index(issue.status) if issue.status in status_order else -1
+        target_statuses = status_order[current_index + 1 :] if current_index >= 0 else status_order
+        for target_status in target_statuses:
+            for transition in transitions:
+                transition_target = str(transition.get("to", {}).get("name", "")).strip()
+                if transition_target.casefold() != target_status.casefold():
+                    continue
+                transition_id = str(transition.get("id", "")).strip()
+                if not transition_id:
+                    continue
+                return TransitionActionContext(
+                    issue_key=issue.key,
+                    input_mode="transition",
+                    mode_label="MODE: NEXT TRANSITION (INPUT)",
+                    choice_map={transition_id: transition_id},
+                    notice=f"Next: {issue.status or 'current'} -> {transition_target}",
+                    placeholder=f"Comment required for {transition_target}",
+                    default_transition_id=transition_id,
+                )
+
+        raise ValueError(f"No next transition available for {issue.key}")
+
+    def submit_transition_expression(
+        self,
+        issue_key: str,
+        expression: str,
+        choice_map: dict[str, str],
+        default_transition_id: str = "",
+    ) -> str:
         """Validate and apply transition expression."""
         transition_input, comment = self.parse_transition_expression(expression)
+        if default_transition_id and "|" not in expression:
+            transition_input = default_transition_id
+            comment = expression.strip()
+        if not comment:
+            raise ValueError("A comment is required for every transition")
         transition_id = self.resolve_transition_id(choice_map, transition_input)
         if not transition_id:
             raise ValueError("Unknown transition. Use shown ID or exact name.")
