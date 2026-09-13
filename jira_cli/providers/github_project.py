@@ -420,6 +420,10 @@ class GitHubProjectProvider:
                 transitions.append({"id": name, "name": name, "to": {"name": name}})
         return transitions
 
+    def get_transitions(self, issue_key: str) -> list[dict]:
+        """Alias for list_transitions to satisfy IssueTrackerProvider / workflow feature contract."""
+        return self.list_transitions(issue_key)
+
     def transition_issue(self, issue_key: str, transition_id: str, comment: Optional[str] = None) -> bool:
         """Update an item's status in Project V2 via GraphQL mutation."""
         cached = self._item_cache.get(issue_key)
@@ -528,6 +532,16 @@ class GitHubProjectProvider:
                     if login not in seen:
                         seen.add(login)
                         users.append({"accountId": login, "displayName": a.get("name") or login, "active": True})
+        return users[:max_results]
+
+    def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
+        """Search assignees by displayName or accountId for autocomplete."""
+        query_lower = query.casefold()
+        users = [
+            u
+            for u in self.list_assignable_users(project_key, max_results=100)
+            if query_lower in u.get("displayName", "").casefold() or query_lower in u.get("accountId", "").casefold()
+        ]
         return users[:max_results]
 
 
