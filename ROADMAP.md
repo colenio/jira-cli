@@ -26,8 +26,8 @@ Date: 2026-09-13
   - Map parent/child sub-issue relationships for GitHub issues.
 - [ ] **GitLab Provider Adapter:**
   - Design GitLab provider adapter supporting GitLab Issues, Epics, Weights, and Scoped Labels.
-- [ ] **Project Name & Re-branding Evaluation:**
-  - Revisit naming (`jira-cli` vs. `tracker-cli` / `task-cli`) once multi-provider dogfooding (Jira + GitHub + GitLab) is complete.
+- [ ] **Project Name & Re-branding (Rule of Three):**
+  - Rename project (e.g. `jira-cli` ➔ `tracker-cli` / `task-cli`) once 3 providers exist (Jira + GitHub + GitLab) and dogfooding is complete.
 
 ## Backlog / Enhancements
 
