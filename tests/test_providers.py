@@ -102,3 +102,54 @@ def test_github_label_dict_includes_issue_count() -> None:
         "description": "Something is not working",
         "issueCount": 3,
     }
+
+
+def test_parse_project_target() -> None:
+    from jira_cli.providers.github_project import parse_project_target
+
+    assert parse_project_target("colenio/21") == ("colenio", 21)
+    assert parse_project_target("orgs/colenio/projects/21") == ("colenio", 21)
+    assert parse_project_target("21", default_owner="colenio") == ("colenio", 21)
+
+
+def test_registry_resolves_github_project_context() -> None:
+    context = ProviderRegistry(load_env=False).resolve_context(provider="github-project", project="colenio/21")
+
+    assert context.name == "github-project:colenio/21"
+    assert context.provider == "github-project"
+    assert context.target == "colenio/21"
+    assert context.label == "GitHub Project / colenio/21"
+
+
+def test_github_project_provider_to_jira_issue() -> None:
+    from jira_cli.providers.github_project import GitHubProjectProvider
+
+    provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
+    provider._status_options = {"Todo": "opt1", "In Progress": "opt2", "Done": "opt3"}
+    provider._item_cache = {}
+
+    node = {
+        "id": "PVTI_123456",
+        "type": "ISSUE",
+        "content": {
+            "number": 42,
+            "title": "Test Issue",
+            "repository": {"nameWithOwner": "colenio/jira-cli"},
+            "assignees": {"nodes": [{"login": "mkoertgen", "name": "Marcel Körtgen"}]},
+            "labels": {"nodes": [{"name": "enhancement"}]},
+            "body": "Test body",
+        },
+        "fieldValueByName": {"name": "In Progress", "optionId": "opt2"},
+        "updatedAt": "2026-09-13T10:00:00Z",
+    }
+
+    issue = provider._to_jira_issue(node)
+
+    assert issue.key == "jira-cli#42"
+    assert issue.fields.summary == "Test Issue"
+    assert issue.fields.status == {"name": "In Progress"}
+    assert issue.fields.assignee == {"accountId": "mkoertgen", "displayName": "Marcel Körtgen"}
+    assert issue.fields.labels == ["enhancement"]
+
+    transitions = provider.list_transitions("jira-cli#42")
+    assert {t["name"] for t in transitions} == {"Todo", "Done"}

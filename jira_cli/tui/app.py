@@ -149,6 +149,19 @@ class JiraApp(App):
         self.workflow_feature = JiraWorkflowFeature(client)
         self.command_suggester = CommandSuggester(lambda: self.all_issues)
 
+    def _status_order(self) -> list[str]:
+        """Return status order configured by provider descriptor or default."""
+        try:
+            desc = self.client.describe()
+            resource = desc.resource("issue") or desc.resource("issues")
+            if resource:
+                for f in resource.filters:
+                    if f.name == "status" and f.special_values:
+                        return list(f.special_values)
+        except Exception:
+            pass
+        return DEFAULT_STATUS_ORDER
+
     def compose(self) -> ComposeResult:
         """Create the app layout."""
         yield JiraTopBar(self.current_user_display_name, title=f"Jira CLI — {self.context.label}")
@@ -158,7 +171,7 @@ class JiraApp(App):
         yield Input(placeholder="Find text in summary/description and press Enter", id="query_input")
         yield Input(placeholder="Filter issues (key/summary/status/assignee). Press Esc to clear", id="filter_input")
         yield IssueTableWidget(self.issues, id="issue_table")
-        yield BoardWidget(self.issues, id="issue_board")
+        yield BoardWidget(self.issues, status_order=self._status_order(), id="issue_board")
         yield UserTableWidget(self.users, id="user_table")
         yield VersionTableWidget(self.versions, id="version_table")
         yield LabelTableWidget(self.labels, id="label_table")
@@ -477,7 +490,7 @@ class JiraApp(App):
         if verb == "next":
             issue = self._selected_issue()
             try:
-                context = self.workflow_feature.prepare_next_transition_action(issue, DEFAULT_STATUS_ORDER)
+                context = self.workflow_feature.prepare_next_transition_action(issue, self._status_order())
             except ValueError as value_error:
                 self.notify(str(value_error), severity="warning")
                 return
