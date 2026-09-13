@@ -1,5 +1,6 @@
 """Board widget: poor-man's kanban board grouped by issue status."""
 
+from textual import events
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Label, ListItem, ListView
 
@@ -17,6 +18,8 @@ def _row_label(issue: IssueRow) -> str:
 
 class BoardColumn(VerticalScroll):
     """A single status column containing a header and a list of issue cards."""
+
+    can_focus = False
 
     DEFAULT_CSS = """
     BoardColumn {
@@ -109,6 +112,29 @@ class BoardWidget(Horizontal):
             list_view.index = 0
             return issue
         return None
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle left/right arrow and h/l keys for column navigation."""
+        if event.key in ("left", "h", "right", "l"):
+            focused = self.screen.focused
+            columns = [c for c in self.children if isinstance(c, BoardColumn)]
+            current_idx = -1
+            for idx, col in enumerate(columns):
+                list_view = col.query(ListView).first()
+                if list_view is not None and (focused == list_view or focused == col):
+                    current_idx = idx
+                    break
+
+            if current_idx != -1:
+                target_idx = current_idx - 1 if event.key in ("left", "h") else current_idx + 1
+                if 0 <= target_idx < len(columns):
+                    target_list = columns[target_idx].query(ListView).first()
+                    if target_list is not None:
+                        target_list.focus()
+                        if target_list.index is None and target_list.children:
+                            target_list.index = 0
+                        event.prevent_default()
+                        event.stop()
 
     def focus_board(self) -> None:
         """Focus the first available issue card."""

@@ -200,6 +200,32 @@ def test_provider_query_placeholder_uses_github_example(sample_issues):
     )
 
 
+def test_board_column_can_focus_is_false():
+    from jira_cli.tui.features.board.widgets import BoardColumn
+
+    assert BoardColumn.can_focus is False
+
+
+async def test_board_widget_keyboard_navigation(sample_issues):
+    client = FakeJiraClient()
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        await pilot.press("v")  # toggle board
+        selected = app._selected_issue()
+        assert selected is not None
+        assert selected.status == "To Do"
+
+        await pilot.press("right")
+        selected_after_right = app._selected_issue()
+        assert selected_after_right is not None
+        assert selected_after_right.status == "In Progress"
+
+        await pilot.press("left")
+        selected_after_left = app._selected_issue()
+        assert selected_after_left is not None
+        assert selected_after_left.status == "To Do"
+
+
 async def test_type_quick_filter_runs_server_side(app):
     async with app.run_test() as pilot:
         await app._submit_command("type=bug")
