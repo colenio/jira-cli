@@ -105,7 +105,7 @@ def test_github_label_dict_includes_issue_count() -> None:
 
 
 def test_parse_project_target() -> None:
-    from jira_cli.providers.github_project import parse_project_target
+    from jira_cli.providers.github import parse_project_target
 
     assert parse_project_target("colenio/21") == ("colenio", 21)
     assert parse_project_target("orgs/colenio/projects/21") == ("colenio", 21)
@@ -151,7 +151,7 @@ def test_registry_interactive_context_selection(monkeypatch) -> None:
 
 
 def test_github_project_provider_to_jira_issue() -> None:
-    from jira_cli.providers.github_project import GitHubProjectProvider
+    from jira_cli.providers.github import GitHubProjectProvider
 
     provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
     provider._status_options = {"Todo": "opt1", "In Progress": "opt2", "Done": "opt3"}

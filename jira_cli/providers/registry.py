@@ -65,16 +65,29 @@ class ProviderRegistry:
         contexts = [demo_context()]
         gh_project = os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")
         if gh_project and self._has_github_token():
-            contexts.append(github_project_context(gh_project))
+            contexts.append(github_context(gh_project))
+
         github_repository = self.github_repository_from_context()
         if github_repository and self._has_github_token():
-            contexts.append(github_context(github_repository))
+            # Only add repository context if it's not already covered by the project context or if explicitly configured
+            if not gh_project or github_repository != gh_project:
+                contexts.append(github_context(github_repository))
+
         if self._has_jira_credentials():
             try:
                 contexts.append(jira_context(project))
             except ValueError:
                 pass
-        return contexts
+
+        # Deduplicate contexts by target
+        seen_targets = set()
+        unique_contexts = []
+        for ctx in contexts:
+            if ctx.target not in seen_targets:
+                seen_targets.add(ctx.target)
+                unique_contexts.append(ctx)
+
+        return unique_contexts
 
     def resolve_context(
         self,
