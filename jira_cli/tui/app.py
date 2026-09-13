@@ -714,24 +714,24 @@ class JiraApp(App):
         candidates = []
         user_labels = []
         for u in assignable:
-            name = u.get("displayName") or u.get("accountId", "")
-            acct = u.get("accountId", "")
+            name = u.get("displayName") or ""
+            acct = u.get("accountId") or ""
             if name and acct and name != acct:
                 user_labels.append(f"{name} (@{acct})")
-                candidates.extend([name, acct, f"{name} (@{acct})"])
+                candidates.extend([name, acct, f"@{acct}"])
             else:
                 entry = name or acct
                 if entry:
                     user_labels.append(entry)
-                    candidates.append(entry)
+                    candidates.extend([entry, f"@{entry}"] if not entry.startswith("@") else [entry])
 
         candidates = list(dict.fromkeys(candidates))
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = ActionSuggester(candidates)
 
-        notice_text = "Assignees: " + " | ".join(user_labels[:5]) if user_labels else "Assignee: type user name or accountId"
+        notice_text = "Assignees: " + " | ".join(user_labels[:5]) if user_labels else "Assignee: type user name or handle"
         self.notify(notice_text, timeout=8)
-        self._show_query_input("Assignee name, @username, or accountId (press Tab for completion)")
+        self._show_query_input("Assignee name or @handle (press Tab for completion)")
 
     def action_comment(self) -> None:
         """Prompt for comment and execute submission with validation."""

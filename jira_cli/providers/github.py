@@ -1,4 +1,4 @@
-"""GitHub Issues read-only provider."""
+"""Unified GitHub provider supporting both Repository Issues (REST) and Project V2 Boards (GraphQL)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from githubkit import GitHub
 
 from jira_cli.models import JiraIssue, JiraIssueField, JiraSearchResult
 
-from .base import FilterDescriptor, ProviderDescriptor, ResourceDescriptor, SortDescriptor
+from .base import ActionDescriptor, FilterDescriptor, ProviderDescriptor, ResourceDescriptor, SortDescriptor
+from .github_project import GitHubProjectProvider, parse_project_target
 
 GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="github",
@@ -30,6 +31,11 @@ GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
                 SortDescriptor(name="updated", field="updated", default_direction="desc"),
                 SortDescriptor(name="comments", field="comments", default_direction="desc"),
             ),
+            actions=(
+                ActionDescriptor(name="transition", requires_comment=False),
+                ActionDescriptor(name="assign", requires_comment=False),
+                ActionDescriptor(name="comment", requires_comment=False),
+            ),
         ),
         ResourceDescriptor(
             kind="users",
@@ -48,24 +54,48 @@ GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
 )
 
 
+def is_project_target(target: str) -> bool:
+    """Check if target represents a GitHub Project V2 target (owner/number, orgs/owner/projects/number, or digits)."""
+    if not target:
+        return False
+    cleaned = target.strip().strip("/")
+    parts = [p for p in cleaned.split("/") if p and p not in ("orgs", "users", "projects")]
+    if len(parts) == 2 and parts[1].isdigit():
+        return True
+    if len(parts) == 1 and parts[0].isdigit():
+        return True
+    return False
+
+
 class GitHubProvider:
-    """Read-only provider backed by PyGithub and a single owner/repository target."""
+    """Unified GitHub provider dispatching to Repo REST or Project V2 GraphQL depending on target."""
 
     dry_run = False
 
-    def __init__(self, repository: str, token: str):
-        self.repository = repository
-        self.base_url = f"https://github.com/{repository}"
+    def __init__(self, target: str, token: str, default_owner: str = ""):
+        self.target = target
+        self.base_url = f"https://github.com/{target}"
         self._github = GitHub(token)
-        self._owner, self._repo_name = repository.split("/", 1)
-        self._repo = self._github.rest.repos.get(self._owner, self._repo_name).parsed_data
+
+        if is_project_target(target):
+            self._delegate = GitHubProjectProvider(target, token, default_owner=default_owner)
+            self._owner = self._delegate.owner
+            self._repo_name = ""
+        else:
+            self._delegate = None
+            self.repository = target
+            self._owner, self._repo_name = target.split("/", 1)
 
     def describe(self) -> ProviderDescriptor:
-        """Describe GitHub resources and read-only capabilities."""
+        """Describe GitHub resources and capabilities."""
+        if getattr(self, "_delegate", None):
+            return self._delegate.describe()
         return GITHUB_PROVIDER_DESCRIPTOR
 
     def get_issue_url(self, key: str) -> str:
         """Return the web URL for an issue key."""
+        if self._delegate:
+            return self._delegate.get_issue_url(key)
         number = key.lstrip("#")
         return f"{self.base_url.rstrip('/')}/issues/{number}"
 
@@ -77,7 +107,10 @@ class GitHubProvider:
         max_results: int = 50,
         expand: Optional[list[str]] = None,
     ) -> JiraSearchResult:
-        """Search GitHub issues using the JiraQuery-generated subset understood by this provider."""
+        """Search GitHub issues or project board items."""
+        if self._delegate:
+            return self._delegate.search(jql, fields, start_at, max_results, expand)
+
         filters, sort_field, sort_direction = _parse_query(jql)
         state = _github_state(filters.get("status"))
         labels = filters.get("labels")
@@ -110,18 +143,31 @@ class GitHubProvider:
 
     def get_current_user(self) -> dict:
         """Return the authenticated GitHub user."""
+        if self._delegate:
+            return self._delegate.get_current_user()
         user = self._github.rest.users.get_authenticated().parsed_data
         return _github_user_dict(user)
 
     def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
         """Return repository assignees/collaborators assignable to GitHub issues."""
-        users = self._github.rest.issues.list_assignees(
-            self._owner, self._repo_name, per_page=max_results
-        ).parsed_data
+        if self._delegate:
+            return self._delegate.list_assignable_users(project_key, max_results)
+
+        users = list(
+            self._github.rest.paginate(
+                self._github.rest.issues.list_assignees,
+                owner=self._owner,
+                repo=self._repo_name,
+                per_page=100,
+            )
+        )
         return [_github_user_dict(user) for user in users[:max_results]]
 
     def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
-        """Search repository assignees by login/name."""
+        """Search assignees by login/name."""
+        if self._delegate:
+            return self._delegate.find_assignable_users(project_key, query, max_results)
+
         query_lower = query.casefold()
         users = [
             user
@@ -131,18 +177,24 @@ class GitHubProvider:
         return users[:max_results]
 
     def search_users(self, query: str, max_results: int = 20) -> list[dict]:
-        """Search repository users; GitHub global search is intentionally not used for privacy/noise."""
-        return self.find_assignable_users(self.repository, query, max_results=max_results)
+        """Search repository/board users."""
+        return self.find_assignable_users(self.target, query, max_results=max_results)
 
     def list_versions(self, project_key: str) -> list[dict]:
-        """Return repository milestones in the existing version/milestone shape."""
+        """Return repository milestones or empty list."""
+        if self._delegate:
+            return self._delegate.list_versions(project_key)
+
         milestones = self._github.rest.issues.list_milestones(
             self._owner, self._repo_name, state="all", per_page=100
         ).parsed_data
         return [_milestone_dict(milestone) for milestone in milestones]
 
     def list_labels(self, project_key: str) -> list[dict]:
-        """Return repository labels."""
+        """Return repository or board labels."""
+        if self._delegate:
+            return self._delegate.list_labels(project_key)
+
         labels = self._github.rest.issues.list_labels_for_repo(
             self._owner, self._repo_name, per_page=100
         ).parsed_data
@@ -163,7 +215,10 @@ class GitHubProvider:
         )
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
-        """Return comments for a GitHub issue key like '#123' or 'owner/repo#123'."""
+        """Return comments for a GitHub issue key."""
+        if self._delegate:
+            return self._delegate.get_issue_comments(key, expand_changelog)
+
         comments = self._github.rest.paginate(
             self._github.rest.issues.list_comments,
             owner=self._owner,
@@ -174,20 +229,63 @@ class GitHubProvider:
         return [_comment_dict(comment) for comment in comments]
 
     def add_comment(self, key: str, body: str | dict, use_adf: bool = False) -> dict:
-        """Read-only provider: comments are not supported yet."""
-        raise NotImplementedError("GitHub provider is read-only for comments in this version")
+        """Add a comment to an issue."""
+        if self._delegate:
+            return self._delegate.add_comment(key, body, use_adf)
+
+        num = _issue_number(key)
+        text = body if isinstance(body, str) else str(body)
+        res = self._github.rest.issues.create_comment(self._owner, self._repo_name, num, body=text).parsed_data
+        return {"id": str(res.id), "body": res.body}
 
     def get_transitions(self, key: str) -> list[dict]:
-        """Read-only provider: workflow transitions are not exposed yet."""
-        return []
+        """Return available status transitions for an issue."""
+        if self._delegate:
+            return self._delegate.get_transitions(key)
+
+        # For repo issues, state is open or closed
+        return [
+            {"id": "closed", "name": "Closed", "to": {"name": "Closed"}},
+            {"id": "open", "name": "Open", "to": {"name": "Open"}},
+        ]
+
+    def list_transitions(self, key: str) -> list[dict]:
+        return self.get_transitions(key)
 
     def transition_issue(self, key: str, transition_id: str, comment: str | None = None) -> None:
-        """Read-only provider: transitions are not supported yet."""
-        raise NotImplementedError("GitHub provider is read-only for transitions in this version")
+        """Transition issue state (open/closed) in repository."""
+        if self._delegate:
+            self._delegate.transition_issue(key, transition_id, comment)
+            return
+
+        num = _issue_number(key)
+        target_state = "closed" if transition_id.casefold() in ("closed", "close", "done") else "open"
+        self._github.rest.issues.update(self._owner, self._repo_name, num, state=target_state)
+        if comment:
+            self.add_comment(key, comment)
 
     def assign_issue(self, key: str, account_id: str) -> None:
-        """Read-only provider: assignment is not supported yet."""
-        raise NotImplementedError("GitHub provider is read-only for assignment in this version")
+        """Assign issue to user login."""
+        if self._delegate:
+            self._delegate.assign_issue(key, account_id)
+            return
+
+        num = _issue_number(key)
+        login = self._resolve_login(account_id)
+        self._github.rest.issues.update(self._owner, self._repo_name, num, assignees=[login] if login else [])
+
+    def _resolve_login(self, input_val: str) -> str:
+        input_clean = input_val.strip().lstrip("@")
+        if not input_clean:
+            return ""
+        users = self.list_assignable_users(self.repository, max_results=100)
+        for u in users:
+            if u.get("accountId", "").casefold() == input_clean.casefold():
+                return u["accountId"]
+        for u in users:
+            if u.get("displayName", "").casefold() == input_clean.casefold():
+                return u["accountId"]
+        return input_clean
 
     def _to_jira_issue(self, issue) -> JiraIssue:
         labels = [label.name for label in issue.labels]

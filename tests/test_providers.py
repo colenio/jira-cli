@@ -23,7 +23,7 @@ def test_demo_provider_describes_same_core_resources() -> None:
     assert descriptor.resource("versions") is not None
 
 
-def test_github_provider_describes_read_only_resources() -> None:
+def test_github_provider_describes_resources() -> None:
     issues = GITHUB_PROVIDER_DESCRIPTOR.resource("issues")
     labels = GITHUB_PROVIDER_DESCRIPTOR.resource("labels")
 
@@ -32,7 +32,7 @@ def test_github_provider_describes_read_only_resources() -> None:
     assert GITHUB_PROVIDER_DESCRIPTOR.query_language == "GitHub issue query"
     assert {item.name for item in issues.filters} >= {"status", "assignee", "label", "milestone", "key"}
     assert {item.name for item in issues.sorts} >= {"created", "updated", "comments"}
-    assert not issues.actions
+    assert {item.name for item in issues.actions} >= {"transition", "assign", "comment"}
 
 
 def test_descriptor_resource_lookup_returns_none_for_unknown_kind() -> None:
@@ -115,8 +115,8 @@ def test_parse_project_target() -> None:
 def test_registry_resolves_github_project_context() -> None:
     context = ProviderRegistry(load_env=False).resolve_context(provider="github-project", project="colenio/21")
 
-    assert context.name == "github-project:colenio/21"
-    assert context.provider == "github-project"
+    assert context.name == "github:colenio/21"
+    assert context.provider == "github"
     assert context.target == "colenio/21"
     assert context.label == "GitHub Project / colenio/21"
 
@@ -128,7 +128,7 @@ def test_registry_auto_detects_single_context(monkeypatch) -> None:
     # When no provider requested, auto-detect single available real context
     context = ProviderRegistry(load_env=False).resolve_context(interactive=False)
 
-    assert context.provider == "github-project"
+    assert context.provider == "github"
     assert context.target == "colenio/21"
 
 
@@ -146,7 +146,7 @@ def test_registry_interactive_context_selection(monkeypatch) -> None:
 
     context = ProviderRegistry(load_env=False).resolve_context(interactive=True)
 
-    assert context.provider == "github-project"
+    assert context.provider == "github"
     assert context.target == "colenio/21"
 
 

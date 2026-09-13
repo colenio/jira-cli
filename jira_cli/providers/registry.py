@@ -14,8 +14,7 @@ from jira_cli.dotenv import DotEnv
 
 from .base import IssueTrackerProvider, ProviderContext
 from .demo import DemoProvider
-from .github import GitHubProvider
-from .github_project import GitHubProjectProvider
+from .github import GitHubProvider, is_project_target
 from .jira import JiraProvider
 
 
@@ -32,21 +31,26 @@ def jira_context(project: str | None = None) -> ProviderContext:
     return ProviderContext(name=f"jira:{target}", provider="jira", target=target, label=f"Jira / {target}")
 
 
-def github_context(repository: str) -> ProviderContext:
-    """Build a GitHub context for owner/repository."""
+def github_context(target: str) -> ProviderContext:
+    """Build a unified GitHub context for a repository or Project V2 target."""
+    if is_project_target(target):
+        return ProviderContext(
+            name=f"github:{target}",
+            provider="github",
+            target=target,
+            label=f"GitHub Project / {target}",
+        )
     return ProviderContext(
-        name=f"github:{repository}", provider="github", target=repository, label=f"GitHub / {repository}"
+        name=f"github:{target}",
+        provider="github",
+        target=target,
+        label=f"GitHub / {target}",
     )
 
 
 def github_project_context(target: str) -> ProviderContext:
-    """Build a GitHub Project V2 context for owner/number or target string."""
-    return ProviderContext(
-        name=f"github-project:{target}",
-        provider="github-project",
-        target=target,
-        label=f"GitHub Project / {target}",
-    )
+    """Alias for github_context for backwards compatibility."""
+    return github_context(target)
 
 
 class ProviderRegistry:
@@ -85,15 +89,18 @@ class ProviderRegistry:
             return demo_context(project or DEMO_PROJECT_KEY)
 
         requested = (provider or "").lower()
-        if requested in ("github-project", "github_project", "gh-project"):
-            target = project or repository or os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")
+        if requested in ("github", "gh", "github-project", "github_project", "gh-project"):
+            target = (
+                project
+                or repository
+                or os.environ.get("GH_PROJECT")
+                or os.environ.get("GITHUB_PROJECT")
+                or os.environ.get("GH_REPO")
+                or os.environ.get("GITHUB_REPOSITORY")
+                or self.github_repository_from_context()
+            )
             if not target:
-                raise ValueError("Missing GitHub Project target. Pass --project owner/number (e.g. colenio/21) or set GH_PROJECT.")
-            return github_project_context(target)
-        if requested == "github":
-            target = repository or self.github_repository_from_context()
-            if not target:
-                raise ValueError("Missing GitHub repository. Use -R owner/name, set GH_REPO, or run inside a GitHub repo.")
+                raise ValueError("Missing GitHub target. Pass -p/--project owner/number, -R owner/repo, set GH_PROJECT, or set GH_REPO.")
             return github_context(target)
         if requested == "jira":
             return jira_context(project)
@@ -119,7 +126,7 @@ class ProviderRegistry:
 
                 # Priority order for non-interactive resolution
                 for ctx in real_contexts:
-                    if ctx.provider == "github-project" and (os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")):
+                    if is_project_target(ctx.target) and (os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")):
                         return ctx
                 for ctx in real_contexts:
                     if ctx.provider == "jira":
@@ -128,18 +135,13 @@ class ProviderRegistry:
 
             return jira_context(project)
 
-        raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, github-project, jira")
+        raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, jira")
 
     def create_provider(self, context: ProviderContext) -> IssueTrackerProvider:
         """Instantiate a provider for the given context."""
         if context.provider == "demo":
             return DemoProvider()
-        if context.provider == "github":
-            token = self.github_token()
-            if not token:
-                raise ValueError("Missing GitHub token. Set GH_TOKEN/GITHUB_TOKEN or run: gh auth login")
-            return GitHubProvider(repository=context.target, token=token)
-        if context.provider in ("github-project", "github_project"):
+        if context.provider in ("github", "gh", "github-project", "github_project"):
             token = self.github_token()
             if not token:
                 raise ValueError("Missing GitHub token. Set GH_TOKEN/GITHUB_TOKEN or run: gh auth login")
@@ -147,7 +149,7 @@ class ProviderRegistry:
             repo = self.github_repository_from_context()
             if repo and "/" in repo:
                 default_owner = repo.split("/")[0]
-            return GitHubProjectProvider(target=context.target, token=token, default_owner=default_owner)
+            return GitHubProvider(target=context.target, token=token, default_owner=default_owner)
         if context.provider == "jira":
             base_url = os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL")
             email = os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER")

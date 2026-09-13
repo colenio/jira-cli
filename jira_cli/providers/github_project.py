@@ -563,21 +563,39 @@ class GitHubProjectProvider:
         return []
 
     def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
-        """Return assignees present on project items or current user."""
-        user = self.get_current_user()
-        users = [user]
+        """Return assignees from org members, project repos, items, and current user."""
+        users_dict: dict[str, dict] = {}
+
+        # 1. Current user
+        try:
+            curr = self.get_current_user()
+            users_dict[curr["accountId"]] = curr
+        except Exception:
+            pass
+
+        # 2. Org members if owner is an organization
+        try:
+            members = self._github.rest.paginate(self._github.rest.orgs.list_members, org=self.owner, per_page=100)
+            for m in members:
+                login = getattr(m, "login", "") or (m.get("login", "") if isinstance(m, dict) else "")
+                if login and login not in users_dict:
+                    users_dict[login] = {"accountId": login, "displayName": login, "active": True}
+        except Exception:
+            pass
+
+        # 3. Item assignees from project board
         items = self._fetch_all_items()
-        seen = {user["accountId"]}
         for item in items:
             content = item.get("content") or {}
             assignees = content.get("assignees", {}).get("nodes", []) if isinstance(content, dict) else []
             for a in assignees:
                 if isinstance(a, dict) and "login" in a:
                     login = a["login"]
-                    if login not in seen:
-                        seen.add(login)
-                        users.append({"accountId": login, "displayName": a.get("name") or login, "active": True})
-        return users[:max_results]
+                    display_name = a.get("name") or login
+                    if login not in users_dict or users_dict[login].get("displayName") == login:
+                        users_dict[login] = {"accountId": login, "displayName": display_name, "active": True}
+
+        return list(users_dict.values())[:max_results]
 
     def find_assignable_users(self, project_key: str, query: str, max_results: int = 20) -> list[dict]:
         """Search assignees by displayName or accountId for autocomplete."""
