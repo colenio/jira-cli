@@ -121,6 +121,35 @@ def test_registry_resolves_github_project_context() -> None:
     assert context.label == "GitHub Project / colenio/21"
 
 
+def test_registry_auto_detects_single_context(monkeypatch) -> None:
+    monkeypatch.setenv("GH_PROJECT", "colenio/21")
+    monkeypatch.setattr(ProviderRegistry, "github_token", staticmethod(lambda: "ghp_fake"))
+
+    # When no provider requested, auto-detect single available real context
+    context = ProviderRegistry(load_env=False).resolve_context(interactive=False)
+
+    assert context.provider == "github-project"
+    assert context.target == "colenio/21"
+
+
+def test_registry_interactive_context_selection(monkeypatch) -> None:
+    monkeypatch.setenv("GH_PROJECT", "colenio/21")
+    monkeypatch.setenv("JIRA_URL", "https://example.atlassian.net")
+    monkeypatch.setenv("JIRA_EMAIL", "test@example.com")
+    monkeypatch.setenv("JIRA_API_TOKEN", "token")
+    monkeypatch.setenv("JIRA_PROJECT", "COM")
+    monkeypatch.setattr(ProviderRegistry, "github_token", staticmethod(lambda: "ghp_fake"))
+
+    # Mock interactive prompt returning option 1 (github-project)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("click.prompt", lambda prompt, type, default, err: 1)
+
+    context = ProviderRegistry(load_env=False).resolve_context(interactive=True)
+
+    assert context.provider == "github-project"
+    assert context.target == "colenio/21"
+
+
 def test_github_project_provider_to_jira_issue() -> None:
     from jira_cli.providers.github_project import GitHubProjectProvider
 

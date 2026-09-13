@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 
 import click
 
@@ -77,27 +78,56 @@ class ProviderRegistry:
         project: str | None = None,
         repository: str | None = None,
         demo: bool = False,
+        interactive: bool = True,
     ) -> ProviderContext:
-        """Resolve the requested provider context, defaulting to Jira when possible."""
+        """Resolve requested or auto-detected provider context."""
         if demo or (provider or "").lower() == "demo":
             return demo_context(project or DEMO_PROJECT_KEY)
+
         requested = (provider or "").lower()
         if requested in ("github-project", "github_project", "gh-project"):
             target = project or repository or os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")
             if not target:
-                repo = self.github_repository_from_context()
-                if repo and "/" in repo:
-                    # Default owner if numeric project passed or missing
-                    raise ValueError("Missing GitHub Project target. Pass --project owner/number (e.g. colenio/21) or set GH_PROJECT.")
-                raise ValueError("Missing GitHub Project target. Pass --project owner/number or set GH_PROJECT.")
+                raise ValueError("Missing GitHub Project target. Pass --project owner/number (e.g. colenio/21) or set GH_PROJECT.")
             return github_project_context(target)
         if requested == "github":
             target = repository or self.github_repository_from_context()
             if not target:
                 raise ValueError("Missing GitHub repository. Use -R owner/name, set GH_REPO, or run inside a GitHub repo.")
             return github_context(target)
-        if requested == "jira" or not requested:
+        if requested == "jira":
             return jira_context(project)
+
+        if not requested:
+            real_contexts = [c for c in self.available_contexts(project) if c.provider != "demo"]
+
+            if len(real_contexts) == 1:
+                return real_contexts[0]
+
+            if len(real_contexts) > 1:
+                if interactive and sys.stdin.isatty():
+                    click.echo("Multiple provider contexts detected:", err=True)
+                    for idx, ctx in enumerate(real_contexts, 1):
+                        click.echo(f"  [{idx}] {ctx.label}", err=True)
+                    choice = click.prompt(
+                        "Select provider context",
+                        type=click.IntRange(1, len(real_contexts)),
+                        default=1,
+                        err=True,
+                    )
+                    return real_contexts[choice - 1]
+
+                # Priority order for non-interactive resolution
+                for ctx in real_contexts:
+                    if ctx.provider == "github-project" and (os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")):
+                        return ctx
+                for ctx in real_contexts:
+                    if ctx.provider == "jira":
+                        return ctx
+                return real_contexts[0]
+
+            return jira_context(project)
+
         raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, github-project, jira")
 
     def create_provider(self, context: ProviderContext) -> IssueTrackerProvider:
