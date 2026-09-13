@@ -341,7 +341,7 @@ def _parse_query(query: str) -> tuple[dict[str, str], str, str]:
         elif field == "issuetype":
             filters["type"] = value
     if not order_part:
-        return filters, "updated", "desc"
+        return filters, "created", "desc"
     parts = order_part.split()
     return filters, parts[0].lower(), parts[1].lower() if len(parts) > 1 else "asc"
 

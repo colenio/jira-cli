@@ -226,6 +226,24 @@ async def test_board_widget_keyboard_navigation(sample_issues):
         assert selected_after_left.status == "To Do"
 
 
+async def test_board_widget_focus_restored_after_command(sample_issues):
+    client = FakeJiraClient()
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        await pilot.press("b")  # toggle board
+        selected_before = app._selected_issue()
+        assert selected_before is not None
+
+        await pilot.press("colon")  # open command bar
+        await pilot.press("b")
+        await pilot.press("enter")
+        await pilot.pause()
+
+        selected_after = app._selected_issue()
+        assert selected_after is not None
+        assert selected_after.key == selected_before.key
+
+
 async def test_action_suggester_completion():
     from jira_cli.tui.features.workflow.suggester import ActionSuggester
 

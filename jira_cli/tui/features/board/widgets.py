@@ -24,14 +24,22 @@ class BoardColumn(VerticalScroll):
     DEFAULT_CSS = """
     BoardColumn {
         width: 1fr;
-        border: solid $accent;
+        border: solid $primary;
         margin: 0 1 0 0;
     }
     BoardColumn > Label {
-        background: $accent;
+        background: $primary;
         color: $text;
         text-style: bold;
         padding: 0 1;
+    }
+    BoardColumn ListView > ListItem.--highlight {
+        background: $accent 40%;
+    }
+    BoardColumn ListView:focus > ListItem.--highlight {
+        background: $accent;
+        color: $text;
+        text-style: bold;
     }
     """
 
@@ -72,10 +80,15 @@ class BoardWidget(Horizontal):
             yield BoardColumn(status, rows)
 
     def get_selected_issue(self) -> IssueRow | None:
-        """Return the issue currently highlighted in whichever column has focus."""
+        """Return the issue currently highlighted in whichever column has focus or active selection."""
         focused = self.screen.focused
         if isinstance(focused, ListView) and focused.highlighted_child:
             return getattr(focused.highlighted_child, "issue", None)
+        for col in self.children:
+            if isinstance(col, BoardColumn):
+                lv = col.query(ListView).first()
+                if lv and lv.highlighted_child:
+                    return getattr(lv.highlighted_child, "issue", None)
         return None
 
     async def replace_rows(self, rows: list[IssueRow], preferred_key: str | None = None) -> IssueRow | None:
@@ -133,11 +146,27 @@ class BoardWidget(Horizontal):
                         target_list.focus()
                         if target_list.index is None and target_list.children:
                             target_list.index = 0
+                        selected = getattr(target_list.highlighted_child, "issue", None)
+                        if selected:
+                            self.app.update_issue_detail(selected)
                         event.prevent_default()
                         event.stop()
 
-    def focus_board(self) -> None:
-        """Focus the first available issue card."""
+    def focus_board(self, preferred_key: str | None = None) -> None:
+        """Focus the column containing preferred_key or the first available column with cards."""
+        if preferred_key:
+            for column in self.children:
+                if not isinstance(column, BoardColumn):
+                    continue
+                list_view = column.query(ListView).first()
+                if list_view is None or not list_view.children:
+                    continue
+                for index, item in enumerate(list_view.children):
+                    if getattr(item, "issue", None) and item.issue.key == preferred_key:
+                        list_view.index = index
+                        list_view.focus()
+                        return
+
         for column in self.children:
             if not isinstance(column, BoardColumn):
                 continue

@@ -272,15 +272,34 @@ class JiraApp(App):
         self.query_one("#label_detail", LabelDetailWidget).display = kind == "labels"
 
         if kind == "issues":
-            widget = self.query_one("#issue_board", BoardWidget) if board else self.query_one("#issue_table", IssueTableWidget)
+            if board:
+                self.query_one("#issue_board", BoardWidget).focus_board()
+            else:
+                self.query_one("#issue_table", IssueTableWidget).focus()
         elif kind == "users":
-            widget = self.query_one("#user_table", UserTableWidget)
+            self.query_one("#user_table", UserTableWidget).focus()
         elif kind == "labels":
-            widget = self.query_one("#label_table", LabelTableWidget)
+            self.query_one("#label_table", LabelTableWidget).focus()
         else:
-            widget = self.query_one("#version_table", VersionTableWidget)
-        widget.focus()
+            self.query_one("#version_table", VersionTableWidget).focus()
         self._update_query_context()
+
+    def _restore_active_focus(self, preferred_key: str | None = None) -> None:
+        """Return focus to the active main widget (table, board, users, labels, versions)."""
+        if self.active_kind == "issues":
+            if self.board_visible:
+                board = self.query_one("#issue_board", BoardWidget)
+                selected = self._selected_issue()
+                key = preferred_key or (selected.key if selected else None)
+                board.focus_board(preferred_key=key)
+            else:
+                self.query_one("#issue_table", IssueTableWidget).focus()
+        elif self.active_kind == "users":
+            self.query_one("#user_table", UserTableWidget).focus()
+        elif self.active_kind == "labels":
+            self.query_one("#label_table", LabelTableWidget).focus()
+        elif self.active_kind == "versions":
+            self.query_one("#version_table", VersionTableWidget).focus()
 
     def _show_query_input(self, placeholder: str, value: str = "") -> None:
         """Show query input consistently and focus it."""
@@ -292,12 +311,11 @@ class JiraApp(App):
         query_input.focus()
 
     def _hide_query_input(self) -> None:
-        """Hide query input and return focus to table."""
+        """Hide query input and return focus to active view."""
         query_input = self.query_one("#query_input", Input)
         query_input.display = False
         query_input.disabled = True
-        table = self.query_one("#issue_table", IssueTableWidget)
-        table.focus()
+        self._restore_active_focus()
 
     def _show_filter_input(self) -> None:
         """Show filter input and focus it."""
@@ -307,12 +325,11 @@ class JiraApp(App):
         filter_input.focus()
 
     def _hide_filter_input(self) -> None:
-        """Hide filter input and return focus to table."""
+        """Hide filter input and return focus to active view."""
         filter_input = self.query_one("#filter_input", Input)
         filter_input.display = False
         filter_input.disabled = True
-        table = self.query_one("#issue_table", IssueTableWidget)
-        table.focus()
+        self._restore_active_focus()
 
     async def _run_jql_context(self, jql: str, context_label: str) -> None:
         """Execute JQL and set it as active remote context."""
@@ -454,6 +471,9 @@ class JiraApp(App):
             self.notify("Query text is empty", severity="warning")
             return
 
+        selected = self._selected_issue()
+        preferred_key = selected.key if selected else None
+
         self._hide_query_input()
 
         try:
@@ -461,6 +481,8 @@ class JiraApp(App):
             self.input_mode = "none"
         except Exception as e:
             self.notify(f"Query failed: {escape(str(e))}", severity="error")
+        finally:
+            self._restore_active_focus(preferred_key=preferred_key)
 
     def action_focus_filter(self) -> None:
         """Show and focus filter input."""
