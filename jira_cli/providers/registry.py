@@ -66,11 +66,9 @@ class ProviderRegistry:
         gh_project = os.environ.get("GH_PROJECT") or os.environ.get("GITHUB_PROJECT")
         if gh_project and self._has_github_token():
             contexts.append(github_context(gh_project))
-
-        github_repository = self.github_repository_from_context()
-        if github_repository and self._has_github_token():
-            # Only add repository context if it's not already covered by the project context or if explicitly configured
-            if not gh_project or github_repository != gh_project:
+        else:
+            github_repository = self.github_repository_from_context()
+            if github_repository and self._has_github_token():
                 contexts.append(github_context(github_repository))
 
         if self._has_jira_credentials():
