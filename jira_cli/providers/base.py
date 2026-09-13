@@ -88,6 +88,10 @@ class IssueTrackerProvider(Protocol):
         """Describe provider resources, filters, sorts, and actions."""
         ...
 
+    def get_issue_url(self, key: str) -> str:
+        """Return the web URL for an issue key."""
+        ...
+
     def search(
         self,
         jql: str,

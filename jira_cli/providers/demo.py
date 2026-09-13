@@ -53,6 +53,10 @@ DEMO_PROVIDER_DESCRIPTOR = ProviderDescriptor(
 class DemoProvider(DemoJiraClient):
     """Synthetic provider for screenshots, demos, and provider-contract tests."""
 
+    def get_issue_url(self, key: str) -> str:
+        """Return the web URL for an issue key."""
+        return f"https://example.atlassian.net/browse/{key}"
+
     def describe(self) -> ProviderDescriptor:
         """Describe demo resources and capabilities."""
         return DEMO_PROVIDER_DESCRIPTOR

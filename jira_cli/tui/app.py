@@ -45,16 +45,18 @@ class JiraApp(App):
         Binding("f", "focus_find", "Find", show=True),
         Binding("j", "focus_jql", "Query", show=True),
         Binding("colon", "focus_command", "Command", show=True),
-        Binding("v", "toggle_board", "Board", show=True),
+        Binding("b", "toggle_board", "Board", show=True),
+        Binding("v", "open_issue", "Open in Browser", show=True),
+        Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("t", "transition", "Transition", show=True),
         Binding("a", "assign", "Assign", show=True),
         Binding("c", "comment", "Comment", show=True),
         Binding("n", "next_comment", "NextComment", show=True),
-        Binding("b", "prev_comment", "PrevComment", show=True),
+        Binding("left_square_bracket", "prev_comment", "PrevComment", show=False),
+        Binding("right_square_bracket", "next_comment", "NextComment", show=False),
         Binding("u", "drill_up", "Parent", show=True),
         Binding("d", "drill_down", "Children", show=True),
         Binding("r", "refresh", "Refresh", show=True),
-        Binding("o", "open_issue", "Open in Browser", show=True),
         Binding("question_mark", "help", "Help", show=True),
         Binding("escape", "clear_filter", "Clear Filter", show=False),
     ]
@@ -478,14 +480,14 @@ class JiraApp(App):
         """Parse and apply a ':' command: view switch, quick filter, or clear."""
         verb, arg = parse_command(expression)
 
-        if verb == "table":
+        if verb in ("table", "issues"):
             self._show_resource("issues", board=False)
             return
-        if verb == "board":
+        if verb in ("board", "b"):
             self._show_resource("issues", board=True)
             return
-        if verb == "issues":
-            self._show_resource("issues", board=False)
+        if verb in ("v", "view", "open"):
+            self.action_open_issue()
             return
         if verb == "next":
             issue = self._selected_issue()
@@ -914,12 +916,14 @@ class JiraApp(App):
             self.notify(f"Error refreshing: {escape(str(e))}", severity="error")
 
     def action_open_issue(self) -> None:
-        """Open selected issue in browser."""
-        table = self.query_one("#issue_table", IssueTableWidget)
-        issue = table.get_selected_issue()
+        """Open selected issue in browser from either list view or board view."""
+        issue = self._selected_issue()
         if issue:
             try:
-                url = f"{self.client.base_url.rstrip('/')}/browse/{issue.key}"
+                if hasattr(self.client, "get_issue_url"):
+                    url = self.client.get_issue_url(issue.key)
+                else:
+                    url = f"{self.client.base_url.rstrip('/')}/browse/{issue.key}"
                 webbrowser.open(url)
                 self.notify(f"Opened {issue.key} in browser")
             except Exception as e:
@@ -936,18 +940,18 @@ class JiraApp(App):
             "[cyan]/[/cyan]        Focus live filter\n"
             "[cyan]f[/cyan]        Find by text (summary/description)\n"
             f"[cyan]j[/cyan]        Run {self.query_language} query\n"
-            "[cyan]:[/cyan]        Command bar: issues/table/board|next|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
-            "[cyan]v[/cyan]        Toggle board view (grouped by status)\n"
+            "[cyan]:[/cyan]        Command bar: issues/table/board/view|next|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
+            "[cyan]b[/cyan]        Toggle board view (grouped by status)\n"
+            "[cyan]v / o[/cyan]    Open selected issue in browser\n"
             "[cyan]Enter[/cyan]    Execute active query input\n"
             "[cyan]t[/cyan]        Transition selected issue\n"
             "[cyan]a[/cyan]        Assign selected issue\n"
             "[cyan]c[/cyan]        Add comment (plain/md/adf)\n"
-            "[cyan]n[/cyan]        Next comment\n"
-            "[cyan]b[/cyan]        Previous comment\n"
+            "[cyan]n / ][/cyan]    Next comment\n"
+            "[cyan][[/cyan]        Previous comment\n"
             "[cyan]u[/cyan]        Drill up to parent issue\n"
             "[cyan]d[/cyan]        Drill down to child issues\n"
             "[cyan]Esc[/cyan]      Close input or reset source\n"
-            "[cyan]o[/cyan]        Open in browser\n"
             "[cyan]r[/cyan]        Refresh issues\n"
             "[cyan]q[/cyan]        Quit\n"
         )

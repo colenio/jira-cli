@@ -34,6 +34,10 @@ class JiraClient:
             timeout=self.timeout,
         )
 
+    def get_issue_url(self, key: str) -> str:
+        """Return the web URL for an issue key."""
+        return f"{self.base_url.rstrip('/')}/browse/{key}"
+
     def search(
         self,
         jql: str,

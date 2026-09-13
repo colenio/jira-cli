@@ -17,6 +17,15 @@ class DotEnv:
         self.verbose = verbose
         self._loaded_from = None
 
+    @staticmethod
+    def _clean_value(val: str) -> str:
+        """Strip whitespace and matching outer single or double quotes."""
+        val = val.strip()
+        if len(val) >= 2:
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                return val[1:-1]
+        return val
+
     def load(self) -> dict[str, str]:
         """
         Load from .env or local.env in CWD or parent directories.
@@ -51,7 +60,7 @@ class DotEnv:
                         if "=" in line:
                             key, val = line.split("=", 1)
                             key = key.strip()
-                            val = val.strip()
+                            val = self._clean_value(val)
                             loaded[key] = val
                             os.environ[key] = val
                 

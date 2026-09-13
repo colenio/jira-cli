@@ -64,6 +64,11 @@ class GitHubProvider:
         """Describe GitHub resources and read-only capabilities."""
         return GITHUB_PROVIDER_DESCRIPTOR
 
+    def get_issue_url(self, key: str) -> str:
+        """Return the web URL for an issue key."""
+        number = key.lstrip("#")
+        return f"{self.base_url.rstrip('/')}/issues/{number}"
+
     def search(
         self,
         jql: str,

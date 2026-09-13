@@ -127,6 +127,15 @@ class GitHubProjectProvider:
                         self._option_id_to_name[opt["id"]] = opt["name"]
                 break
 
+    def get_issue_url(self, key: str) -> str:
+        """Return the web URL for an issue key."""
+        cached = self._item_cache.get(key)
+        if cached and isinstance(cached.get("content"), dict):
+            url = cached["content"].get("url")
+            if url:
+                return url
+        return self.base_url
+
     def describe(self) -> ProviderDescriptor:
         """Describe GitHub Project V2 resources, filters, and actions."""
         status_names = tuple(self._status_options.keys()) if self._status_options else ("Todo", "In Progress", "Done")

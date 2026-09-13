@@ -14,6 +14,8 @@ _VERBS = [
     "table",
     "board",
     "issues",
+    "view",
+    "open",
     "clear",
     "next",
     "me",

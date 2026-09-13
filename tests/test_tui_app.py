@@ -210,7 +210,7 @@ async def test_board_widget_keyboard_navigation(sample_issues):
     client = FakeJiraClient()
     app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
     async with app.run_test() as pilot:
-        await pilot.press("v")  # toggle board
+        await pilot.press("b")  # toggle board
         selected = app._selected_issue()
         assert selected is not None
         assert selected.status == "To Do"
@@ -224,6 +224,18 @@ async def test_board_widget_keyboard_navigation(sample_issues):
         selected_after_left = app._selected_issue()
         assert selected_after_left is not None
         assert selected_after_left.status == "To Do"
+
+
+async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
+    client = FakeJiraClient()
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    async with app.run_test() as pilot:
+        await pilot.press("b")  # toggle board
+        await pilot.press("v")  # view / open issue in browser
+        assert opened_urls == ["https://example.atlassian.net/browse/A-1"]
 
 
 async def test_type_quick_filter_runs_server_side(app):
