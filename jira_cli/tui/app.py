@@ -404,27 +404,52 @@ class JiraApp(App):
         await self._apply_loaded_rows(rows, f"Loaded {len(rows)} issues")
 
     async def _submit_transition(self, expression: str) -> None:
-        """Handle submitted transition command."""
-        try:
-            message = self.workflow_feature.submit_transition_expression(
-                self.pending_issue_key,
-                expression,
-                self.transition_choice_map,
-                default_transition_id=self.pending_transition_id,
-            )
-        except ValueError as value_error:
-            self.notify(str(value_error), severity="error")
-            return
-
-        self.notify(message)
+        """Handle submitted transition command asynchronously in background thread to avoid UI lag."""
+        issue_key = self.pending_issue_key
+        transition_id = self.pending_transition_id
+        choice_map = self.transition_choice_map
         self.pending_transition_id = ""
-        await self.action_refresh()
+
+        def run_transition() -> tuple[str, list[IssueRow]]:
+            message = self.workflow_feature.submit_transition_expression(
+                issue_key,
+                expression,
+                choice_map,
+                default_transition_id=transition_id,
+            )
+            rows = self._run_remote_query()
+            return message, rows
+
+        async def on_done(worker) -> None:
+            if worker.result:
+                message, rows = worker.result
+                self.all_issues = rows
+                self.notify(message)
+                filter_input = self.query_one("#filter_input", Input)
+                await self._apply_filter(filter_input.value)
+                self._restore_active_focus(preferred_key=issue_key)
+
+        self.run_worker(run_transition, thread=True, exclusive=True, exit_on_error=False)
 
     async def _submit_assign(self, expression: str) -> None:
-        """Handle submitted assign command."""
-        message = self.workflow_feature.submit_assign_expression(self.pending_issue_key, expression)
-        self.notify(message)
-        await self.action_refresh()
+        """Handle submitted assign command asynchronously in background thread."""
+        issue_key = self.pending_issue_key
+
+        def run_assign() -> tuple[str, list[IssueRow]]:
+            message = self.workflow_feature.submit_assign_expression(issue_key, expression)
+            rows = self._run_remote_query()
+            return message, rows
+
+        async def on_done(worker) -> None:
+            if worker.result:
+                message, rows = worker.result
+                self.all_issues = rows
+                self.notify(message)
+                filter_input = self.query_one("#filter_input", Input)
+                await self._apply_filter(filter_input.value)
+                self._restore_active_focus(preferred_key=issue_key)
+
+        self.run_worker(run_assign, thread=True, exclusive=True, exit_on_error=False)
 
     async def _submit_comment(self, expression: str) -> None:
         """Handle submitted comment input."""
