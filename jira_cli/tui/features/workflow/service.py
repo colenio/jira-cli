@@ -56,13 +56,20 @@ class JiraWorkflowFeature:
         for transition in transitions:
             transition_id = str(transition.get("id", "")).strip()
             transition_name = str(transition.get("name", "")).strip()
+            to_name = str(transition.get("to", {}).get("name", "")).strip()
+            name = transition_name or to_name or transition_id
             if not transition_id:
                 continue
 
             choice_map[transition_id] = transition_id
-            if transition_name:
-                choice_map[transition_name.lower()] = transition_id
-            labels.append(f"{transition_id}:{transition_name}")
+            if name:
+                choice_map[name] = transition_id
+                choice_map[name.casefold()] = transition_id
+
+            if transition_id == name or not transition_name:
+                labels.append(name or transition_id)
+            else:
+                labels.append(f"{transition_id}:{name}")
 
         return choice_map, labels
 
@@ -143,8 +150,8 @@ class JiraWorkflowFeature:
         if default_transition_id and "|" not in expression:
             transition_input = default_transition_id
             comment = expression.strip()
-        if not comment:
-            raise ValueError("A comment is required for every transition")
+        if default_transition_id and not comment:
+            raise ValueError("A comment is required for this transition")
         transition_id = self.resolve_transition_id(choice_map, transition_input)
         if not transition_id:
             raise ValueError("Unknown transition. Use shown ID or exact name.")

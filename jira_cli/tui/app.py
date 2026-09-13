@@ -30,6 +30,7 @@ from jira_cli.tui.features.query.suggester import CommandSuggester
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, list_project_users, search_project_users
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget, list_project_versions
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
+from jira_cli.tui.features.workflow.suggester import ActionSuggester
 from jira_cli.tui.header import JiraTopBar
 
 ResourceKind = Literal["issues", "users", "versions", "labels"]
@@ -660,7 +661,7 @@ class JiraApp(App):
         return f'JQL, e.g. project = {self.project_key} AND status = "In Progress" ORDER BY updated DESC'
 
     def action_transition(self) -> None:
-        """Prompt for transition ID or name and execute transition."""
+        """Prompt for transition ID or name and execute transition with autocomplete."""
         issue = self._selected_issue()
         try:
             context = self.workflow_feature.prepare_transition_action(issue)
@@ -678,11 +679,21 @@ class JiraApp(App):
         mode_label.update(context.mode_label)
         self.transition_choice_map = context.choice_map
 
+        # Collect transition name / ID candidates for autocomplete
+        candidates = []
+        for key in context.choice_map.keys():
+            if not key.islower() or key in context.choice_map.values():
+                candidates.append(key)
+        candidates = list(dict.fromkeys(candidates))
+
+        query_input = self.query_one("#query_input", Input)
+        query_input.suggester = ActionSuggester(candidates)
+
         self.notify(context.notice, timeout=8)
-        self._show_query_input(context.placeholder)
+        self._show_query_input("Transition status name or ID [| optional comment]")
 
     def action_assign(self) -> None:
-        """Prompt for assignee and execute assignment."""
+        """Prompt for assignee and execute assignment with autocomplete."""
         issue = self._selected_issue()
         try:
             context = self.workflow_feature.prepare_assign_action(issue)
@@ -694,7 +705,33 @@ class JiraApp(App):
         self.input_mode = context.input_mode
         mode_label = self.query_one("#mode_context", Label)
         mode_label.update(context.mode_label)
-        self._show_query_input(context.placeholder)
+
+        try:
+            assignable = self.client.list_assignable_users(self.project_key, max_results=20)
+        except Exception:
+            assignable = []
+
+        candidates = []
+        user_labels = []
+        for u in assignable:
+            name = u.get("displayName") or u.get("accountId", "")
+            acct = u.get("accountId", "")
+            if name and acct and name != acct:
+                user_labels.append(f"{name} (@{acct})")
+                candidates.extend([name, acct, f"{name} (@{acct})"])
+            else:
+                entry = name or acct
+                if entry:
+                    user_labels.append(entry)
+                    candidates.append(entry)
+
+        candidates = list(dict.fromkeys(candidates))
+        query_input = self.query_one("#query_input", Input)
+        query_input.suggester = ActionSuggester(candidates)
+
+        notice_text = "Assignees: " + " | ".join(user_labels[:5]) if user_labels else "Assignee: type user name or accountId"
+        self.notify(notice_text, timeout=8)
+        self._show_query_input("Assignee name, @username, or accountId (press Tab for completion)")
 
     def action_comment(self) -> None:
         """Prompt for comment and execute submission with validation."""
@@ -917,6 +954,9 @@ class JiraApp(App):
 
     def action_open_issue(self) -> None:
         """Open selected issue in browser from either list view or board view."""
+        if self.context.provider == "demo":
+            self.notify("Browser opening disabled in demo mode", severity="warning")
+            return
         issue = self._selected_issue()
         if issue:
             try:

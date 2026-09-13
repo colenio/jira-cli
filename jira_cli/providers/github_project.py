@@ -486,6 +486,51 @@ class GitHubProjectProvider:
 
         return True
 
+    def assign_issue(self, issue_key: str, assignee: str) -> bool:
+        """Assign an issue/PR on the project board to a user."""
+        cached = self._item_cache.get(issue_key)
+        if not cached:
+            self.search("")
+            cached = self._item_cache.get(issue_key)
+
+        if not cached:
+            raise ValueError(f"Item '{issue_key}' not found on project board.")
+
+        assignee_login = self._resolve_assignee_login(assignee)
+
+        content = cached.get("content") or {}
+        repo_full = content.get("repository", {}).get("nameWithOwner", "")
+        number = content.get("number")
+
+        if not repo_full or not number:
+            raise ValueError(f"Item '{issue_key}' is a draft or does not support assignment.")
+
+        owner, repo_name = repo_full.split("/", 1)
+        self._github.rest.issues.update(owner, repo_name, number, assignees=[assignee_login] if assignee_login else [])
+        return True
+
+    def _resolve_assignee_login(self, input_val: str) -> str:
+        input_clean = input_val.strip()
+        if not input_clean:
+            return ""
+
+        match = re.search(r"@([\w-]+)", input_clean)
+        if match:
+            return match.group(1)
+
+        users = self.list_assignable_users(self.owner, max_results=100)
+        for u in users:
+            if u.get("accountId", "").casefold() == input_clean.casefold():
+                return u["accountId"]
+        for u in users:
+            if u.get("displayName", "").casefold() == input_clean.casefold():
+                return u["accountId"]
+        for u in users:
+            if input_clean.casefold() in u.get("displayName", "").casefold() or input_clean.casefold() in u.get("accountId", "").casefold():
+                return u["accountId"]
+
+        return input_clean
+
     def get_current_user(self) -> dict:
         """Return authenticated user."""
         user = self._github.rest.users.get_authenticated().parsed_data

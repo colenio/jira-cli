@@ -38,7 +38,7 @@ def test_transition_requires_comment() -> None:
     feature = JiraWorkflowFeature(provider)
 
     with pytest.raises(ValueError, match="comment is required"):
-        feature.submit_transition_expression("DEMO-1", "21", {"21": "21"})
+        feature.submit_transition_expression("DEMO-1", "", {"21": "21"}, default_transition_id="21")
 
 
 def test_next_transition_applies_comment_to_selected_transition() -> None:

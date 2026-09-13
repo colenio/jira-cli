@@ -226,9 +226,25 @@ async def test_board_widget_keyboard_navigation(sample_issues):
         assert selected_after_left.status == "To Do"
 
 
+async def test_action_suggester_completion():
+    from jira_cli.tui.features.workflow.suggester import ActionSuggester
+
+    suggester = ActionSuggester(["In Progress", "Done", "Todo"])
+    assert await suggester.get_suggestion("in") == "In Progress"
+    assert await suggester.get_suggestion("do") == "Done"
+    assert await suggester.get_suggestion("In Progress | ") is None
+    assert await suggester.get_suggestion("In Progress | do") == "In Progress | Done"
+
+
 async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
     client = FakeJiraClient()
-    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    app = JiraApp(
+        client,
+        "A",
+        sample_issues,
+        current_user_display_name="Marcel Körtgen",
+        context=ProviderContext(name="jira:A", provider="jira", target="A", label="Jira / A"),
+    )
     opened_urls = []
     monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
 
@@ -236,6 +252,23 @@ async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
         await pilot.press("b")  # toggle board
         await pilot.press("v")  # view / open issue in browser
         assert opened_urls == ["https://example.atlassian.net/browse/A-1"]
+
+
+async def test_open_issue_ignored_in_demo_mode(sample_issues, monkeypatch):
+    client = FakeJiraClient()
+    app = JiraApp(
+        client,
+        "DEMO",
+        sample_issues,
+        current_user_display_name="Marcel Körtgen",
+        context=ProviderContext(name="demo", provider="demo", target="DEMO", label="Demo / DEMO"),
+    )
+    opened_urls = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened_urls.append(url))
+
+    async with app.run_test() as pilot:
+        await pilot.press("v")
+        assert opened_urls == []
 
 
 async def test_type_quick_filter_runs_server_side(app):
