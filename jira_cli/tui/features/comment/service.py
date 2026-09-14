@@ -180,6 +180,18 @@ class JiraCommentFeature:
         comment_text = f"[dim]@{author} {created}[/dim]\n{text}"
         return comment_text, f"{index + 1}/{len(comments)}"
 
+    def thread_view(self, issue_key: str) -> str:
+        """Return all loaded comments as readable text for the comment modal."""
+        comments = self.ensure_loaded(issue_key)
+        if not comments:
+            return "No comments yet"
+        parts = []
+        for comment in comments:
+            author = comment.get("author", {}).get("displayName", "unknown")
+            created = str(comment.get("created", ""))[:19]
+            parts.append(f"@{author} {created}\n{self._extract_comment_text(comment)}")
+        return "\n\n".join(parts)
+
 
     @staticmethod
     def _extract_comment_text(comment: dict[str, Any]) -> str:

@@ -567,6 +567,37 @@ class GitHubProjectProvider:
         return {"id": str(res.id), "body": res.body}
 
     def update_issue(self, issue_key: str, fields: dict) -> None:
+        """Update canonical fields on a project item's underlying issue or PR."""
+        cached = self._item_cache.get(issue_key)
+        if not cached:
+            self.search("")
+            cached = self._item_cache.get(issue_key)
+        if not cached:
+            raise ValueError(f"Item '{issue_key}' not found on project board.")
+
+        content = cached.get("content") or {}
+        repo_full = content.get("repository", {}).get("nameWithOwner", "")
+        number = content.get("number")
+        if not repo_full or not number:
+            raise ValueError(f"Item '{issue_key}' is a draft or does not support updates.")
+
+        update_fields = {}
+        if fields.get("summary"):
+            update_fields["title"] = fields["summary"]
+        if "description" in fields:
+            update_fields["body"] = fields["description"]
+        if "labels" in fields:
+            update_fields["labels"] = fields["labels"]
+        if fields.get("assignee"):
+            update_fields["assignees"] = [self._resolve_assignee_login(fields["assignee"])]
+        if not update_fields:
+            raise ValueError("No supported issue fields supplied")
+
+        owner, repo_name = repo_full.split("/", 1)
+        self._github.rest.issues.update(owner, repo_name, number, **update_fields)
+        content.update({"title": fields.get("summary", content.get("title")), "body": fields.get("description", content.get("body", ""))})
+
+    def update_issue(self, issue_key: str, fields: dict) -> None:
         """Update the title of a project item's underlying issue or pull request."""
         cached = self._item_cache.get(issue_key)
         if not cached:
@@ -960,8 +991,14 @@ class GitHubProvider:
             update_fields["title"] = fields["summary"]
         if "title" in fields:
             update_fields["title"] = fields["title"]
+        if "description" in fields:
+            update_fields["body"] = fields["description"]
+        if "labels" in fields:
+            update_fields["labels"] = fields["labels"]
+        if fields.get("assignee"):
+            update_fields["assignees"] = [self._resolve_login(fields["assignee"])]
         if not update_fields:
-            raise ValueError("GitHub issue update currently supports title/summary only")
+            raise ValueError("No supported issue fields supplied")
         self._github.rest.issues.update(self._owner, self._repo_name, _issue_number(key), **update_fields)
 
     def get_transitions(self, key: str) -> list[dict]:

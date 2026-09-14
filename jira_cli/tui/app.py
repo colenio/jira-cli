@@ -15,8 +15,8 @@ from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
 from jira_cli.tui.features.board.service import DEFAULT_STATUS_ORDER
 from jira_cli.tui.features.comment import JiraCommentFeature
-from jira_cli.tui.features.comment.suggester import MentionSuggester
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
+from jira_cli.tui.features.issues.modals import CommentModal, EditIssueModal
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
 from jira_cli.tui.features.query.service import (
     QueryMode,
@@ -464,6 +464,15 @@ class JiraApp(App):
         self.notify(f"Updated title for {issue_key}")
         await self.action_refresh()
 
+    async def _submit_edit_fields(self, fields: dict) -> None:
+        """Apply fields returned by the issue edit modal."""
+        if not fields.get("summary"):
+            self.notify("Title is empty", severity="warning")
+            return
+        self.client.update_issue(self.pending_issue_key, fields)
+        self.notify(f"Updated {self.pending_issue_key}")
+        await self.action_refresh()
+
     async def _submit_comment(self, expression: str) -> None:
         """Handle submitted comment input."""
         try:
@@ -797,19 +806,20 @@ class JiraApp(App):
         self._show_query_input("Assignee name or @handle (press Tab for completion)")
 
     def action_edit_title(self) -> None:
-        """Prompt for a new title for the selected issue."""
+        """Open the common issue edit form."""
         issue = self._selected_issue()
         if not issue:
             self.notify("No issue selected", severity="warning")
             return
 
         self.pending_issue_key = issue.key
-        self.input_mode = "edit_title"
-        self.query_one("#mode_context", Label).update("MODE: EDIT TITLE (INPUT)")
-        self._show_query_input("New issue title", issue.summary)
+        self.push_screen(
+            EditIssueModal(issue.key, issue.summary, labels=issue.labels),
+            lambda fields: self.run_worker(self._submit_edit_fields(fields), exclusive=True) if fields else None,
+        )
 
     def action_comment(self) -> None:
-        """Prompt for comment and execute submission with validation."""
+        """Open the comment thread and multiline composer."""
         issue = self._selected_issue()
         try:
             context = self.comment_feature.prepare_comment_action(issue)
@@ -818,27 +828,10 @@ class JiraApp(App):
             return
 
         self.pending_issue_key = context.issue_key
-        self.input_mode = context.input_mode
-        mode_label = self.query_one("#mode_context", Label)
-        mode_label.update(context.mode_label)
-        try:
-            users = self.client.list_assignable_users(self.project_key, max_results=100)
-        except Exception:
-            users = []
-        mention_candidates = []
-        mention_aliases = {}
-        for user in users:
-            account_id = user.get("accountId", "").lstrip("@")
-            display_name = user.get("displayName", "").strip()
-            if account_id:
-                mention_candidates.append(account_id)
-            if display_name and account_id and display_name.casefold() != account_id.casefold():
-                mention_candidates.append(display_name)
-                mention_aliases[display_name] = account_id
-        self.query_one("#query_input", Input).suggester = MentionSuggester(
-            list(dict.fromkeys(mention_candidates)), aliases=mention_aliases
+        self.push_screen(
+            CommentModal(issue.key, self.comment_feature.thread_view(issue.key)),
+            lambda text: self.run_worker(self._submit_comment(text), exclusive=True) if text else None,
         )
-        self._show_query_input(context.placeholder)
 
     def action_next_comment(self) -> None:
         """Select next comment for the selected issue."""
