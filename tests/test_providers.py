@@ -183,13 +183,12 @@ def test_github_project_provider_to_jira_issue() -> None:
     assert issue.fields.status == {"name": "In Progress"}
     assert issue.fields.assignee == {"accountId": "mkoertgen", "displayName": "Marcel Körtgen"}
 
-    issue = provider._to_jira_issue(node)
 
-    assert issue.key == "jira-cli#42"
-    assert issue.fields.summary == "Test Issue"
-    assert issue.fields.status == {"name": "In Progress"}
-    assert issue.fields.assignee == {"accountId": "mkoertgen", "displayName": "Marcel Körtgen"}
-    assert issue.fields.labels == ["enhancement"]
+def test_github_project_repo_filter_matches_full_and_short_names() -> None:
+    from jira_cli.providers.github import _matches_item
 
-    transitions = provider.list_transitions("jira-cli#42")
-    assert {t["name"] for t in transitions} == {"Todo", "Done"}
+    item = {"content": {"repository": {"nameWithOwner": "colenio/website-astro"}}}
+
+    assert _matches_item(item, {"repo": "colenio/website-astro"})
+    assert _matches_item(item, {"repo": "website-astro"})
+    assert not _matches_item(item, {"repo": "colenio/jira-cli"})

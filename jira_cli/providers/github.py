@@ -207,6 +207,7 @@ class GitHubProjectProvider:
                         FilterDescriptor(name="status", field="status", special_values=status_names),
                         FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
                         FilterDescriptor(name="label", field="labels"),
+                        FilterDescriptor(name="repo", field="repository"),
                         FilterDescriptor(name="type", field="type"),
                     ),
                     sorts=(
@@ -565,6 +566,29 @@ class GitHubProjectProvider:
         res = self._github.rest.issues.create_comment(owner, repo_name, number, body=text).parsed_data
         return {"id": str(res.id), "body": res.body}
 
+    def update_issue(self, issue_key: str, fields: dict) -> None:
+        """Update the title of a project item's underlying issue or pull request."""
+        cached = self._item_cache.get(issue_key)
+        if not cached:
+            self.search("")
+            cached = self._item_cache.get(issue_key)
+        if not cached:
+            raise ValueError(f"Item '{issue_key}' not found on project board.")
+
+        title = fields.get("summary", fields.get("title"))
+        if not title:
+            raise ValueError("GitHub Project item update currently supports title/summary only")
+
+        content = cached.get("content") or {}
+        repo_full = content.get("repository", {}).get("nameWithOwner", "")
+        number = content.get("number")
+        if not repo_full or not number:
+            raise ValueError(f"Item '{issue_key}' is a draft or does not support title updates.")
+
+        owner, repo_name = repo_full.split("/", 1)
+        self._github.rest.issues.update(owner, repo_name, number, title=title)
+        content["title"] = title
+
     def assign_issue(self, issue_key: str, assignee: str) -> bool:
         """Assign an issue/PR on the project board to a user."""
         cached = self._item_cache.get(issue_key)
@@ -726,6 +750,14 @@ def _matches_item(item: dict[str, Any], filters: dict[str, str]) -> bool:
         labels = content.get("labels", {}).get("nodes", []) if isinstance(content, dict) else []
         matched = any(target_label == l.get("name", "").casefold() for l in labels if isinstance(l, dict))
         if not matched:
+            return False
+
+    if "repo" in filters:
+        target_repo = filters["repo"].casefold()
+        repository = content.get("repository", {}) if isinstance(content, dict) else {}
+        full_name = repository.get("nameWithOwner", "").casefold()
+        short_name = full_name.rsplit("/", 1)[-1]
+        if target_repo not in (full_name, short_name):
             return False
 
     return True
@@ -916,6 +948,21 @@ class GitHubProvider:
         text = body if isinstance(body, str) else str(body)
         res = self._github.rest.issues.create_comment(self._owner, self._repo_name, num, body=text).parsed_data
         return {"id": str(res.id), "body": res.body}
+
+    def update_issue(self, key: str, fields: dict) -> None:
+        """Update supported fields on a repository issue or project item."""
+        if self._delegate:
+            self._delegate.update_issue(key, fields)
+            return
+
+        update_fields = {}
+        if "summary" in fields:
+            update_fields["title"] = fields["summary"]
+        if "title" in fields:
+            update_fields["title"] = fields["title"]
+        if not update_fields:
+            raise ValueError("GitHub issue update currently supports title/summary only")
+        self._github.rest.issues.update(self._owner, self._repo_name, _issue_number(key), **update_fields)
 
     def get_transitions(self, key: str) -> list[dict]:
         """Return available status transitions for an issue."""

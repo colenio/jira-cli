@@ -136,6 +136,10 @@ class IssueTrackerProvider(Protocol):
         """Add a comment to an issue."""
         ...
 
+    def update_issue(self, key: str, fields: dict) -> None:
+        """Update supported issue fields, such as the summary/title."""
+        ...
+
     def get_transitions(self, key: str) -> list[dict]:
         """List transitions/actions available for an issue."""
         ...

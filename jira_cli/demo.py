@@ -142,6 +142,10 @@ class DemoJiraClient:
         """Pretend to add a comment in demo mode."""
         return {"id": "demo-comment", "body": body}
 
+    def update_issue(self, key: str, fields: dict) -> None:
+        """Pretend to update an issue in demo mode."""
+        return None
+
     def get_transitions(self, key: str) -> list[dict]:
         """Return synthetic workflow transitions."""
         return [{"id": "demo-done", "name": "Done"}, {"id": "demo-progress", "name": "In Progress"}]

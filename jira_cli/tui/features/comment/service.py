@@ -2,12 +2,20 @@
 
 from dataclasses import dataclass
 import json
+import re
 from threading import RLock
 from typing import Any
 
 from jira_cli.models import IssueRow
 from jira_cli.providers import IssueTrackerProvider
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
+
+
+def _looks_like_markdown(text: str) -> bool:
+    """Recognize common Markdown idioms suitable for one-line comment input."""
+    return bool(
+        re.search(r"\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\([^\)]+\)|```", text)
+    )
 
 @dataclass(frozen=True)
 class CommentActionContext:
@@ -29,7 +37,7 @@ class JiraCommentFeature:
         self._lock = RLock()
 
     def normalize_input(self, expression: str) -> tuple[str, str]:
-        """Parse comment input mode prefix and payload."""
+        """Infer comment format from explicit prefixes or common inline syntax."""
         mode = "plain"
         payload = expression
         if expression.startswith("md:"):
@@ -40,6 +48,19 @@ class JiraCommentFeature:
             payload = expression[4:].strip()
         elif expression.startswith("plain:"):
             payload = expression[6:].strip()
+        else:
+            candidate = expression.strip()
+            if candidate.startswith("{"):
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict) and parsed.get("type") == "doc":
+                    mode = "adf"
+                    payload = candidate
+            if mode == "plain" and _looks_like_markdown(candidate):
+                mode = "md"
+                payload = candidate
         return mode, payload
 
     def prepare_comment_action(self, issue: IssueRow | None) -> CommentActionContext:
@@ -50,7 +71,7 @@ class JiraCommentFeature:
             issue_key=issue.key,
             input_mode="comment",
             mode_label="MODE: COMMENT (INPUT)",
-            placeholder="Comment: plain:<text> | md:<markdown> | adf:<json> (default is plain)",
+            placeholder="Comment text; supports @mentions, **bold**, `code`, links, and ADF JSON",
         )
 
     def submit_comment_expression(self, issue_key: str, expression: str) -> str:

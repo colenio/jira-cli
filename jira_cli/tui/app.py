@@ -15,6 +15,7 @@ from jira_cli.quick_filters import QuickFilterResolver
 from jira_cli.tui.features.board import BoardWidget
 from jira_cli.tui.features.board.service import DEFAULT_STATUS_ORDER
 from jira_cli.tui.features.comment import JiraCommentFeature
+from jira_cli.tui.features.comment.suggester import MentionSuggester
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
 from jira_cli.tui.features.query.service import (
@@ -51,6 +52,7 @@ class JiraApp(App):
         Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("t", "transition", "Transition", show=True),
         Binding("a", "assign", "Assign", show=True),
+        Binding("e", "edit_title", "Edit title", show=True),
         Binding("c", "comment", "Comment", show=True),
         Binding("n", "next_comment", "NextComment", show=True),
         Binding("left_square_bracket", "prev_comment", "PrevComment", show=False),
@@ -143,7 +145,7 @@ class JiraApp(App):
         self.order_by = ""
         self.quick_filter_clauses: dict[str, str] = {}
         self.active_kind: ResourceKind = "issues"
-        self.input_mode: Literal["find", "jql", "command", "transition", "assign", "comment", "none"] = "none"
+        self.input_mode: Literal["find", "jql", "command", "transition", "assign", "edit_title", "comment", "none"] = "none"
         self.pending_issue_key = ""
         self.pending_transition_id = ""
         self.transition_choice_map: dict[str, str] = {}
@@ -451,6 +453,17 @@ class JiraApp(App):
 
         self.run_worker(run_assign, thread=True, exclusive=True, exit_on_error=False)
 
+    async def _submit_edit_title(self, expression: str) -> None:
+        """Update the selected issue title through the active provider."""
+        title = expression.strip()
+        if not title:
+            self.notify("Title is empty", severity="warning")
+            return
+        issue_key = self.pending_issue_key
+        self.client.update_issue(issue_key, {"summary": title})
+        self.notify(f"Updated title for {issue_key}")
+        await self.action_refresh()
+
     async def _submit_comment(self, expression: str) -> None:
         """Handle submitted comment input."""
         try:
@@ -479,6 +492,9 @@ class JiraApp(App):
             return
         if self.input_mode == "assign":
             await self._submit_assign(expression)
+            return
+        if self.input_mode == "edit_title":
+            await self._submit_edit_title(expression)
             return
         if self.input_mode == "comment":
             await self._submit_comment(expression)
@@ -780,6 +796,18 @@ class JiraApp(App):
         self.notify(notice_text, timeout=8)
         self._show_query_input("Assignee name or @handle (press Tab for completion)")
 
+    def action_edit_title(self) -> None:
+        """Prompt for a new title for the selected issue."""
+        issue = self._selected_issue()
+        if not issue:
+            self.notify("No issue selected", severity="warning")
+            return
+
+        self.pending_issue_key = issue.key
+        self.input_mode = "edit_title"
+        self.query_one("#mode_context", Label).update("MODE: EDIT TITLE (INPUT)")
+        self._show_query_input("New issue title", issue.summary)
+
     def action_comment(self) -> None:
         """Prompt for comment and execute submission with validation."""
         issue = self._selected_issue()
@@ -793,6 +821,23 @@ class JiraApp(App):
         self.input_mode = context.input_mode
         mode_label = self.query_one("#mode_context", Label)
         mode_label.update(context.mode_label)
+        try:
+            users = self.client.list_assignable_users(self.project_key, max_results=100)
+        except Exception:
+            users = []
+        mention_candidates = []
+        mention_aliases = {}
+        for user in users:
+            account_id = user.get("accountId", "").lstrip("@")
+            display_name = user.get("displayName", "").strip()
+            if account_id:
+                mention_candidates.append(account_id)
+            if display_name and account_id and display_name.casefold() != account_id.casefold():
+                mention_candidates.append(display_name)
+                mention_aliases[display_name] = account_id
+        self.query_one("#query_input", Input).suggester = MentionSuggester(
+            list(dict.fromkeys(mention_candidates)), aliases=mention_aliases
+        )
         self._show_query_input(context.placeholder)
 
     def action_next_comment(self) -> None:

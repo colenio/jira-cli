@@ -21,10 +21,14 @@ class FakeJiraClient:
             for name in (assignable_users or [])
         ]
         self.comment_calls: list[str] = []
+        self.update_calls: list[tuple[str, dict]] = []
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         self.comment_calls.append(key)
         return []
+
+    def update_issue(self, key: str, fields: dict) -> None:
+        self.update_calls.append((key, fields))
 
     def describe(self) -> ProviderDescriptor:
         return ProviderDescriptor(name="fake", query_language="JQL")
@@ -244,6 +248,22 @@ async def test_board_widget_focus_restored_after_command(sample_issues):
         assert selected_after.key == selected_before.key
 
 
+async def test_edit_title_updates_selected_issue(sample_issues):
+    client = FakeJiraClient()
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    async def skip_refresh() -> None:
+        return None
+
+    app.action_refresh = skip_refresh
+
+    async with app.run_test():
+        app.pending_issue_key = "A-1"
+        await app._submit_edit_title("Renamed issue")
+
+    assert client.update_calls == [("A-1", {"summary": "Renamed issue"})]
+
+
 async def test_action_suggester_completion():
     from jira_cli.tui.features.workflow.suggester import ActionSuggester
 
@@ -252,6 +272,19 @@ async def test_action_suggester_completion():
     assert await suggester.get_suggestion("do") == "Done"
     assert await suggester.get_suggestion("In Progress | ") is None
     assert await suggester.get_suggestion("In Progress | do") == "In Progress | Done"
+
+
+async def test_mention_suggester_preserves_comment_prefix():
+    from jira_cli.tui.features.comment.suggester import MentionSuggester
+
+    suggester = MentionSuggester(
+        ["LiBar82", "Julian Dannenberg", "mkoertgen"],
+        aliases={"Julian Dannenberg": "work-jdannenberg"},
+    )
+    assert await suggester.get_suggestion("Please review @li") == "Please review @LiBar82"
+    assert await suggester.get_suggestion("Please review @jul") == "Please review @work-jdannenberg"
+    assert await suggester.get_suggestion("@mko") == "@mkoertgen"
+    assert await suggester.get_suggestion("No mention here") is None
 
 
 async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
