@@ -90,7 +90,7 @@ The docs are built with MkDocs Material and mkdocstrings. API pages render Pytho
 ## Additional Docs
 
 - [docs/features.md](docs/features.md) — feature overview + TUI keyboard shortcuts
-- [docs/architecture.md](docs/architecture.md)
+- [docs/explanation/architecture.md](docs/explanation/architecture.md)
 - [docs/distribution.md](docs/distribution.md)
 
 ## License

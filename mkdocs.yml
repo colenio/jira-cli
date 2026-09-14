@@ -15,8 +15,10 @@ theme:
 nav:
   - Home: index.md
   - Features: features.md
-  - Architecture: architecture.md
-  - Distribution: distribution.md
+  - How-to guides:
+      - Distribution: distribution.md
+  - Explanation:
+      - Architecture: explanation/architecture.md
   - API Reference:
       - Client: api/client.md
       - Query: api/query.md
