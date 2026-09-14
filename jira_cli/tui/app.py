@@ -106,7 +106,8 @@ class JiraApp(App):
     }
 
     IssueDetailWidget {
-        height: 8;
+            height: 12;
+            overflow-y: auto;
     }
     """
 
