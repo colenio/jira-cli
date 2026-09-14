@@ -281,7 +281,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
-                                            author { login name }
+                      author { login }
                       state
                       body
                       url
@@ -293,7 +293,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
-                                            author { login name }
+                      author { login }
                       state
                       body
                       url
@@ -339,7 +339,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
-                                            author { login name }
+                      author { login }
                       state
                       body
                       url
@@ -351,7 +351,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
-                                            author { login name }
+                      author { login }
                       state
                       body
                       url
