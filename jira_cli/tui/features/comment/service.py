@@ -8,7 +8,7 @@ from typing import Any
 
 from jira_cli.models import IssueRow
 from jira_cli.providers import IssueTrackerProvider
-from jira_cli.render import adf_to_text
+from jira_cli.adf import adf_to_markdown_text
 from jira_cli.adf import markdown_to_adf_document
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
@@ -191,7 +191,7 @@ class JiraCommentFeature:
         for comment in comments:
             author = comment.get("author", {}).get("displayName", "unknown")
             created = str(comment.get("created", ""))[:19]
-            parts.append(f"@{author} {created}\n{self._extract_comment_text(comment)}")
+            parts.append(f"**@{author}** {created}\n\n{self._extract_comment_text(comment)}")
         return "\n\n".join(parts)
 
 
@@ -202,5 +202,5 @@ class JiraCommentFeature:
         if isinstance(body, str):
             return body
         if isinstance(body, dict):
-            return adf_to_text(body).strip()
+            return adf_to_markdown_text(body).strip()
         return ""

@@ -118,7 +118,7 @@ class IssueDetailWidget(Static):
         description = self.issue.description or "—"
         if len(description) > 500:
             description = f"{description[:497]}..."
-        return f"[dim]Description:[/dim] {description}"
+        return f"[dim]Description:[/dim]\n{description}"
 
     def _render_hierarchy(self) -> str:
         """Render parent/child relationship line."""

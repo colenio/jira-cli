@@ -3,7 +3,7 @@
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, TextArea
+from textual.widgets import Button, Input, Label, Markdown, TextArea
 
 
 class EditIssueModal(ModalScreen[dict | None]):
@@ -115,7 +115,7 @@ class CommentModal(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="comment_modal"):
             yield Label(f"Comments for {self.issue_key}", classes="modal-title")
-            yield Label(self.thread or "No comments yet", id="comment_thread")
+            yield Markdown(self.thread or "No comments yet", id="comment_thread", open_links=False)
             yield TextArea(placeholder="Write a comment...", id="comment_editor")
             with Horizontal(id="comment_buttons"):
                 yield Button("Cancel", id="comment_cancel")
