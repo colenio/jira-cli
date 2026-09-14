@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from jira import JIRA
 
+from .adf import markdown_to_adf_document
 from .models import JiraSearchResult
 
 
@@ -420,9 +421,10 @@ class JiraClient:
             response.raise_for_status()
             return
 
-        if isinstance(comment, dict):
-            comment = json.dumps(comment, ensure_ascii=False)
-        self._jira.add_comment(key, comment)
+        adf_comment = markdown_to_adf_document(comment if isinstance(comment, str) else json.dumps(comment, ensure_ascii=False))
+        url = f"{self.base_url}/rest/api/3/issue/{key}/comment"
+        response = self._jira._session.post(url, json={"body": adf_comment})
+        response.raise_for_status()
 
     def update_issue(self, key: str, fields: dict[str, Any]) -> None:
         """Update issue fields.

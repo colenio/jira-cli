@@ -4,20 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-def _adf_to_text(value: object) -> str:
-    """Convert Jira ADF content to readable plain text."""
-    if isinstance(value, str):
-        return value
-    if not isinstance(value, dict):
-        return str(value) if value else ""
-    if value.get("type") == "text":
-        return str(value.get("text", ""))
-
-    text = "".join(_adf_to_text(child) for child in value.get("content", []) or [])
-    if value.get("type") in {"paragraph", "heading", "codeBlock", "blockquote", "listItem", "hardBreak"}:
-        text += "\n"
-    return text
+from jira_cli.adf import adf_to_markdown_text
 
 
 class JiraUser(BaseModel):
@@ -53,7 +40,7 @@ class JiraIssueField(BaseModel):
     @classmethod
     def normalize_description(cls, value: object) -> object:
         """Accept Jira ADF objects while keeping the canonical field textual."""
-        return _adf_to_text(value) if isinstance(value, dict) else value
+        return adf_to_markdown_text(value) if isinstance(value, dict) else value
 
 
 class JiraIssue(BaseModel):

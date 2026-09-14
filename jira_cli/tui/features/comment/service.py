@@ -9,6 +9,7 @@ from typing import Any
 from jira_cli.models import IssueRow
 from jira_cli.providers import IssueTrackerProvider
 from jira_cli.render import adf_to_text
+from jira_cli.adf import markdown_to_adf_document
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 
@@ -96,13 +97,13 @@ class JiraCommentFeature:
             valid, error = validate_markdown_text(payload)
             if not valid:
                 raise ValueError(f"Invalid Markdown: {error}")
-            self._client.add_comment(issue_key, payload)
+            self._client.add_comment(issue_key, markdown_to_adf_document(payload), use_adf=True)
             return f"Added markdown comment to {issue_key}"
 
         if not payload.strip():
             raise ValueError("Comment is empty")
 
-        self._client.add_comment(issue_key, payload)
+        self._client.add_comment(issue_key, markdown_to_adf_document(payload), use_adf=True)
         return f"Added comment to {issue_key}"
 
     def ensure_loaded(self, issue_key: str) -> list[dict[str, Any]]:

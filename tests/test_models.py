@@ -49,7 +49,7 @@ def test_jira_adf_description_is_normalized_to_text():
         ),
     )
 
-    assert issue.fields.description == "First paragraph\nSecond paragraph\n"
+    assert issue.fields.description == "First paragraph\n\nSecond paragraph"
 
 
 def test_dotenv_basic(tmp_path):
