@@ -33,12 +33,31 @@ def test_issue_row_from_jira_issue():
     assert row.description == "Detailed issue description"
 
 
+def test_jira_adf_description_is_normalized_to_text():
+    issue = JiraIssue(
+        key="TEST-ADF",
+        fields=JiraIssueField(
+            summary="ADF issue",
+            description={
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "First paragraph"}]},
+                    {"type": "paragraph", "content": [{"type": "text", "text": "Second paragraph"}]},
+                ],
+            },
+        ),
+    )
+
+    assert issue.fields.description == "First paragraph\nSecond paragraph\n"
+
+
 def test_dotenv_basic(tmp_path):
     """Test DotEnv loading."""
     # Create a test .env file
     env_file = tmp_path / ".env"
     env_file.write_text("TEST_VAR=test_value\nANOTHER=123\n")
-    
+
     # Would need to mock os.getcwd() to test properly
     # This is a placeholder for actual implementation
     assert env_file.exists()

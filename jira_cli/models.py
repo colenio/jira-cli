@@ -2,7 +2,22 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+def _adf_to_text(value: object) -> str:
+    """Convert Jira ADF content to readable plain text."""
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict):
+        return str(value) if value else ""
+    if value.get("type") == "text":
+        return str(value.get("text", ""))
+
+    text = "".join(_adf_to_text(child) for child in value.get("content", []) or [])
+    if value.get("type") in {"paragraph", "heading", "codeBlock", "blockquote", "listItem", "hardBreak"}:
+        text += "\n"
+    return text
 
 
 class JiraUser(BaseModel):
@@ -33,6 +48,12 @@ class JiraIssueField(BaseModel):
     created: Optional[str] = None
     updated: Optional[str] = None
     description: Optional[str] = None
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: object) -> object:
+        """Accept Jira ADF objects while keeping the canonical field textual."""
+        return _adf_to_text(value) if isinstance(value, dict) else value
 
 
 class JiraIssue(BaseModel):
@@ -112,7 +133,7 @@ class IssueRow(BaseModel):
                 or fields.assignee.get("accountId")
                 or fields.assignee.get("key", "")
             )
-        
+
         labels = ", ".join(fields.labels) if fields.labels else ""
         issue_type = ""
         if isinstance(fields.issuetype, dict):
@@ -127,7 +148,7 @@ class IssueRow(BaseModel):
         child_keys: list[str] = []
         if fields.subtasks:
             child_keys = [subtask.get("key", "") for subtask in fields.subtasks if subtask.get("key")]
-        
+
         return IssueRow(
             key=issue.key,
             summary=fields.summary,
