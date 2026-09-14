@@ -200,3 +200,13 @@ def test_github_project_status_filter_handles_null_status() -> None:
     item = {"fieldValueByName": {"name": None}, "content": {}}
 
     assert not _matches_item(item, {"status": "In Progress"})
+
+
+def test_github_project_reporter_filter_matches_author() -> None:
+    from jira_cli.providers.github import _matches_item
+
+    item = {"content": {"author": {"login": "mkoertgen", "name": "Marcel Körtgen"}}}
+
+    assert _matches_item(item, {"reporter": "mkoertgen"})
+    assert _matches_item(item, {"reporter": "Marcel"})
+    assert not _matches_item(item, {"reporter": "someone-else"})

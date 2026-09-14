@@ -69,7 +69,7 @@ class JiraQuery:
     ) -> list[IssueRow]:
         """
         Search issues in a project with optional filters.
-        
+
         Args:
             project_key: Jira project key
             status: Filter by status (e.g. 'To Do', 'In Progress')
@@ -81,7 +81,7 @@ class JiraQuery:
             jql_extra: Additional JQL conditions (AND appended)
             fields: Specific fields to fetch
             max_results: Max results to return
-        
+
         Returns:
             List of IssueRow (flattened for output)
         """
@@ -118,6 +118,7 @@ class JiraQuery:
                 "status",
                 "priority",
                 "assignee",
+                "reporter",
                 "updated",
                 "description",
                 "labels",
@@ -130,12 +131,12 @@ class JiraQuery:
     def search_custom_jql(self, jql: str, fields: Optional[list[str]] = None, max_results: int = 50) -> list[IssueRow]:
         """
         Execute custom JQL query.
-        
+
         Args:
             jql: Full JQL query string
             fields: Specific fields to fetch
             max_results: Max results
-        
+
         Returns:
             List of IssueRow
         """

@@ -15,7 +15,7 @@ class JiraClient:
     def __init__(self, base_url: str, email: str, api_token: str, dry_run: bool = False, timeout: int = 30):
         """
         Initialize Jira client.
-        
+
         Args:
             base_url: Jira instance URL (e.g. https://company.atlassian.net)
             email: Jira user email
@@ -49,14 +49,14 @@ class JiraClient:
     ) -> JiraSearchResult:
         """
         Search issues using JQL via official client.
-        
+
         Args:
             jql: JQL query string
             fields: List of fields to return (e.g. ['key', 'summary', 'status'])
             start_at: Start index for pagination
             max_results: Max issues to return (max 100 for API limit)
             expand: List of fields to expand (e.g. 'changelog')
-        
+
         Returns:
             JiraSearchResult with issues list
         """
@@ -79,12 +79,12 @@ class JiraClient:
     def get_issue(self, key: str, fields: Optional[list[str]] = None, expand: Optional[list[str]] = None) -> dict:
         """
         Fetch single issue by key.
-        
+
         Args:
             key: Issue key (e.g. 'JIRA-123')
             fields: List of fields to return
             expand: List of fields to expand
-        
+
         Returns:
             Issue dict
         """
@@ -286,11 +286,11 @@ class JiraClient:
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """
         Fetch comments for an issue.
-        
+
         Args:
             key: Issue key
             expand_changelog: Include changelog details
-        
+
         Returns:
             List of comment dicts
         """
@@ -304,7 +304,7 @@ class JiraClient:
     def transition_issue(self, key: str, transition_id: str, comment: Optional[str] = None) -> None:
         """
         Transition issue to new status.
-        
+
         Args:
             key: Issue key
             transition_id: Transition ID (e.g. 'In Progress', 'Done')
@@ -335,7 +335,7 @@ class JiraClient:
     def assign_issue(self, key: str, assignee_key: str) -> None:
         """
         Assign issue to user.
-        
+
         Args:
             key: Issue key
             assignee_key: User key or email

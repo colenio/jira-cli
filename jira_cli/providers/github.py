@@ -19,10 +19,11 @@ _REPO_GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     resources=(
         ResourceDescriptor(
             kind="issues",
-            fields=("key", "summary", "status", "assignee", "labels", "milestone", "updated"),
+            fields=("key", "summary", "status", "assignee", "reporter", "labels", "milestone", "updated"),
             filters=(
                 FilterDescriptor(name="status", field="state"),
                 FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                FilterDescriptor(name="reporter", field="author"),
                 FilterDescriptor(name="label", field="labels"),
                 FilterDescriptor(name="milestone", field="milestone"),
                 FilterDescriptor(name="key", field="number"),
@@ -202,10 +203,11 @@ class GitHubProjectProvider:
             resources=(
                 ResourceDescriptor(
                     kind="issues",
-                    fields=("key", "summary", "status", "assignee", "labels", "updated", "issuetype"),
+                    fields=("key", "summary", "status", "assignee", "reporter", "labels", "updated", "issuetype"),
                     filters=(
                         FilterDescriptor(name="status", field="status", special_values=status_names),
                         FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                        FilterDescriptor(name="reporter", field="author"),
                         FilterDescriptor(name="label", field="labels"),
                         FilterDescriptor(name="repo", field="repository"),
                         FilterDescriptor(name="type", field="type"),
@@ -279,6 +281,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
+                                            author { login name }
                       state
                       body
                       url
@@ -290,6 +293,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
+                                            author { login name }
                       state
                       body
                       url
@@ -335,6 +339,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
+                                            author { login name }
                       state
                       body
                       url
@@ -346,6 +351,7 @@ class GitHubProjectProvider:
                       id
                       number
                       title
+                                            author { login name }
                       state
                       body
                       url
@@ -450,6 +456,14 @@ class GitHubProjectProvider:
                 "displayName": first.get("name") or first.get("login", ""),
             }
 
+        author = content.get("author") or {}
+        reporter_dict = None
+        if isinstance(author, dict) and author.get("login"):
+            reporter_dict = {
+                "accountId": author["login"],
+                "displayName": author.get("name") or author["login"],
+            }
+
         labels_nodes = content.get("labels", {}).get("nodes", []) if isinstance(content, dict) else []
         labels_list = [l["name"] for l in labels_nodes if isinstance(l, dict) and "name" in l]
 
@@ -459,6 +473,7 @@ class GitHubProjectProvider:
             summary=content.get("title", "Untitled") if isinstance(content, dict) else "Untitled",
             status={"name": status_name},
             assignee=assignee_dict,
+            reporter=reporter_dict,
             issuetype={"name": issuetype_name},
             labels=labels_list,
             description=content.get("body", "") if isinstance(content, dict) else "",
@@ -777,6 +792,14 @@ def _matches_item(item: dict[str, Any], filters: dict[str, str]) -> bool:
         if not matched:
             return False
 
+    if "reporter" in filters:
+        target_reporter = filters["reporter"].casefold()
+        author = content.get("author") or {}
+        login = author.get("login", "").casefold() if isinstance(author, dict) else ""
+        name = author.get("name", "").casefold() if isinstance(author, dict) else ""
+        if target_reporter not in login and target_reporter not in name:
+            return False
+
     if "label" in filters:
         target_label = filters["label"].casefold()
         labels = content.get("labels", {}).get("nodes", []) if isinstance(content, dict) else []
@@ -1055,6 +1078,7 @@ class GitHubProvider:
         labels = [label.name for label in issue.labels]
         assignees = getattr(issue, "assignees", []) or []
         assignee = _github_user_dict(assignees[0]) if assignees else None
+        reporter = _github_user_dict(issue.user) if getattr(issue, "user", None) else None
         issue_type = _label_value(labels, "type") or "Issue"
         priority = _label_value(labels, "priority") or ""
         return JiraIssue(
@@ -1065,6 +1089,7 @@ class GitHubProvider:
                 status={"name": issue.state},
                 priority={"name": priority},
                 assignee=assignee,
+                reporter=reporter,
                 updated=_datetime_text(issue.updated_at),
                 labels=labels,
             ),
@@ -1098,6 +1123,8 @@ def _parse_query(query: str) -> tuple[dict[str, str], str, str]:
             filters["status"] = value
         elif field == "assignee":
             filters["assignee"] = value
+        elif field == "reporter":
+            filters["reporter"] = value
         elif field == "labels":
             filters["labels"] = value
         elif field == "priority":
@@ -1118,6 +1145,13 @@ def _matches_issue(issue, filters: dict[str, str]) -> bool:
         return False
     if filters.get("type") and _label_value(labels, "type") != filters["type"]:
         return False
+    if filters.get("reporter"):
+        user = getattr(issue, "user", None)
+        login = getattr(user, "login", "") if user else ""
+        name = getattr(user, "name", "") if user else ""
+        target = filters["reporter"].casefold()
+        if target not in login.casefold() and target not in name.casefold():
+            return False
     return True
 
 

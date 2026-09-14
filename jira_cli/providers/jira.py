@@ -12,7 +12,7 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     resources=(
         ResourceDescriptor(
             kind="issues",
-            fields=("key", "summary", "type", "status", "assignee", "priority", "labels", "updated", "parent"),
+            fields=("key", "summary", "type", "status", "assignee", "reporter", "priority", "labels", "updated", "parent"),
             filters=(
                 FilterDescriptor(name="type", field="issuetype"),
                 FilterDescriptor(name="status", field="status"),
