@@ -6,6 +6,12 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Markdown, TextArea
 
 
+class CommentThreadMarkdown(Markdown):
+    """Focusable, keyboard-scrollable Markdown comment thread."""
+
+    can_focus = True
+
+
 class EditIssueModal(ModalScreen[dict | None]):
     """Edit common issue fields in one compact form."""
 
@@ -115,11 +121,15 @@ class CommentModal(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="comment_modal"):
             yield Label(f"Comments for {self.issue_key}", classes="modal-title")
-            yield Markdown(self.thread or "No comments yet", id="comment_thread", open_links=False)
+            yield CommentThreadMarkdown(self.thread or "No comments yet", id="comment_thread", open_links=False)
             yield TextArea(placeholder="Write a comment...", id="comment_editor")
             with Horizontal(id="comment_buttons"):
                 yield Button("Cancel", id="comment_cancel")
                 yield Button("Send", variant="primary", id="comment_send")
+
+    def on_mount(self) -> None:
+        """Start on the thread so existing comments are immediately keyboard-scrollable."""
+        self.query_one("#comment_thread", CommentThreadMarkdown).focus()
 
     def on_key(self, event) -> None:
         if event.key == "escape":
@@ -129,6 +139,14 @@ class CommentModal(ModalScreen[str | None]):
             return
         if event.key == "ctrl+enter":
             self._send()
+            event.prevent_default()
+            return
+        thread = self.query_one("#comment_thread", CommentThreadMarkdown)
+        if event.key == "pageup":
+            thread.scroll_page_up()
+            event.prevent_default()
+        elif event.key == "pagedown":
+            thread.scroll_page_down()
             event.prevent_default()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

@@ -210,3 +210,39 @@ def test_github_project_reporter_filter_matches_author() -> None:
     assert _matches_item(item, {"reporter": "mkoertgen"})
     assert _matches_item(item, {"reporter": "Marcel"})
     assert not _matches_item(item, {"reporter": "someone-else"})
+
+
+def test_github_project_comment_lookup_uses_item_repository() -> None:
+    from jira_cli.providers.github import GitHubProjectProvider
+
+    provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
+    provider._item_cache = {
+        "colenio-infra#1": {
+            "content": {
+                "repository": {"nameWithOwner": "colenio/colenio-infra"},
+                "number": 1,
+            }
+        }
+    }
+
+    class FakeComments:
+        def list_comments(self, **kwargs):
+            return []
+
+    class FakeIssues:
+        list_comments = FakeComments().list_comments
+
+    class FakeRest:
+        issues = FakeIssues()
+
+        @staticmethod
+        def paginate(method, **kwargs):
+            assert kwargs == {"owner": "colenio", "repo": "colenio-infra", "issue_number": 1, "per_page": 100}
+            return []
+
+    class FakeGithub:
+        rest = FakeRest()
+
+    provider._github = FakeGithub()
+
+    assert provider.get_issue_comments("colenio-infra#1") == []

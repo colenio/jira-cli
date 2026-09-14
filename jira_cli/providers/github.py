@@ -559,6 +559,32 @@ class GitHubProjectProvider:
 
         return True
 
+    def get_issue_comments(self, issue_key: str, expand_changelog: bool = False) -> list[dict]:
+        """Return comments for a Project V2 item's underlying issue or pull request."""
+        cached = self._item_cache.get(issue_key)
+        if not cached:
+            self.search("")
+            cached = self._item_cache.get(issue_key)
+
+        if not cached:
+            raise ValueError(f"Item '{issue_key}' not found on project board.")
+
+        content = cached.get("content") or {}
+        repo_full = content.get("repository", {}).get("nameWithOwner", "")
+        number = content.get("number")
+        if not repo_full or not number:
+            return []
+
+        owner, repo_name = repo_full.split("/", 1)
+        comments = self._github.rest.paginate(
+            self._github.rest.issues.list_comments,
+            owner=owner,
+            repo=repo_name,
+            issue_number=number,
+            per_page=100,
+        )
+        return [_comment_dict(comment) for comment in comments]
+
     def add_comment(self, issue_key: str, body: str | dict, use_adf: bool = False) -> dict:
         """Add a comment to a board item's underlying GitHub issue or PR."""
         cached = self._item_cache.get(issue_key)
