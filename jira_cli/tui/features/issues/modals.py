@@ -67,6 +67,11 @@ class EditIssueModal(ModalScreen[dict | None]):
                 }
             )
 
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.prevent_default()
+
 
 class CommentModal(ModalScreen[str | None]):
     """Read the current thread and compose a multiline comment."""
@@ -116,6 +121,10 @@ class CommentModal(ModalScreen[str | None]):
                 yield Button("Send", variant="primary", id="comment_send")
 
     def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.prevent_default()
+            return
         if event.key == "ctrl+enter":
             self._send()
             event.prevent_default()

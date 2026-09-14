@@ -119,6 +119,7 @@ class JiraQuery:
                 "priority",
                 "assignee",
                 "updated",
+                "description",
                 "labels",
             ]
 

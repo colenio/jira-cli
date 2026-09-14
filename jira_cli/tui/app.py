@@ -815,7 +815,7 @@ class JiraApp(App):
 
         self.pending_issue_key = issue.key
         self.push_screen(
-            EditIssueModal(issue.key, issue.summary, labels=issue.labels),
+            EditIssueModal(issue.key, issue.summary, description=issue.description, labels=issue.labels),
             lambda fields: self.run_worker(self._submit_edit_fields(fields), exclusive=True) if fields else None,
         )
 
