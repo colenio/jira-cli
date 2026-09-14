@@ -8,6 +8,7 @@ from typing import Any
 
 from jira_cli.models import IssueRow
 from jira_cli.providers import IssueTrackerProvider
+from jira_cli.render import adf_to_text
 from jira_cli.validation import validate_adf_doc, validate_markdown_text
 
 
@@ -200,5 +201,5 @@ class JiraCommentFeature:
         if isinstance(body, str):
             return body
         if isinstance(body, dict):
-            return json.dumps(body, ensure_ascii=False)
+            return adf_to_text(body).strip()
         return ""

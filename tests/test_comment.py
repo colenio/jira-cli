@@ -22,3 +22,23 @@ def test_explicit_comment_prefixes_remain_supported():
 
     assert feature.normalize_input("plain:hello") == ("plain", "hello")
     assert feature.normalize_input("md:**hello**") == ("md", "**hello**")
+
+
+def test_adf_comment_body_is_rendered_as_text():
+    feature = JiraCommentFeature(CommentProvider())
+    feature._issue_comments["COM-238"] = [
+        {
+            "author": {"displayName": "Marcel Körtgen"},
+            "created": "2026-03-12T17:42:08",
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Readable comment"}]}],
+            },
+        }
+    ]
+
+    thread = feature.thread_view("COM-238")
+
+    assert "Readable comment" in thread
+    assert '"type": "doc"' not in thread

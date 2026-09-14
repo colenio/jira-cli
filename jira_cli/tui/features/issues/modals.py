@@ -71,6 +71,7 @@ class EditIssueModal(ModalScreen[dict | None]):
         if event.key == "escape":
             self.dismiss(None)
             event.prevent_default()
+            event.stop()
 
 
 class CommentModal(ModalScreen[str | None]):
@@ -124,6 +125,7 @@ class CommentModal(ModalScreen[str | None]):
         if event.key == "escape":
             self.dismiss(None)
             event.prevent_default()
+            event.stop()
             return
         if event.key == "ctrl+enter":
             self._send()

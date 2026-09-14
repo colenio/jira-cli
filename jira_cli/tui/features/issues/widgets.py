@@ -76,7 +76,7 @@ class IssueDetailWidget(Static):
     IssueDetailWidget {
         border: solid $accent;
         height: 12;
-            overflow-y: auto;
+        overflow-y: auto;
         color: $text;
     }
     """

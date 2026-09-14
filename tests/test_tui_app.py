@@ -1,6 +1,7 @@
 """Tests for the interactive Jira TUI (JiraApp), driven headlessly via Textual's pilot."""
 
 import pytest
+from textual.widgets import Input
 
 from jira_cli.models import IssueRow
 from jira_cli.providers import ProviderContext, ProviderDescriptor
@@ -320,6 +321,20 @@ async def test_open_issue_ignored_in_demo_mode(sample_issues, monkeypatch):
     async with app.run_test() as pilot:
         await pilot.press("v")
         assert opened_urls == []
+
+
+async def test_edit_modal_escape_does_not_clear_filter(sample_issues):
+    client = FakeJiraClient()
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    async with app.run_test() as pilot:
+        filter_input = app.query_one("#filter_input", Input)
+        filter_input.value = "first"
+        await app._apply_filter("first")
+        await pilot.press("e")
+        await pilot.press("escape")
+
+        assert filter_input.value == "first"
 
 
 async def test_type_quick_filter_runs_server_side(app):

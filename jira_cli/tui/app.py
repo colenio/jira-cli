@@ -332,6 +332,7 @@ class JiraApp(App):
         filter_input = self.query_one("#filter_input", Input)
         filter_input.display = False
         filter_input.disabled = True
+        filter_input.value = ""
         self._restore_active_focus()
 
     async def _run_jql_context(self, jql: str, context_label: str) -> None:
