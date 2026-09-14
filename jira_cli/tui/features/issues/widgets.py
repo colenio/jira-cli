@@ -75,7 +75,7 @@ class IssueDetailWidget(Static):
     DEFAULT_CSS = """
     IssueDetailWidget {
         border: solid $accent;
-        height: 8;
+        height: 12;
         color: $text;
     }
     """
@@ -93,6 +93,7 @@ class IssueDetailWidget(Static):
 
         return (
             f"{self._render_header()}\n"
+            f"{self._render_description()}\n"
             f"{self._render_metadata()}\n"
             f"{self._render_hierarchy()}\n"
             f"{self._render_comment()}"
@@ -110,6 +111,13 @@ class IssueDetailWidget(Static):
             f"[dim]Assignee:[/dim] {self.issue.assignee or 'Unassigned'} | "
             f"[dim]Priority:[/dim] {self.issue.priority or '—'}"
         )
+
+    def _render_description(self) -> str:
+        """Render a compact issue description preview."""
+        description = self.issue.description or "—"
+        if len(description) > 500:
+            description = f"{description[:497]}..."
+        return f"[dim]Description:[/dim] {description}"
 
     def _render_hierarchy(self) -> str:
         """Render parent/child relationship line."""

@@ -67,6 +67,7 @@ class IssueRow(BaseModel):
     priority: str = ""
     assignee: str = ""
     updated: str = ""
+    description: str = ""
     labels: str = ""
     parent_key: str = ""
     child_keys: list[str] = Field(default_factory=list)
@@ -136,6 +137,7 @@ class IssueRow(BaseModel):
             priority=priority,
             assignee=assignee,
             updated=fields.updated or "",
+            description=fields.description or "",
             labels=labels,
             parent_key=parent_key,
             child_keys=child_keys,

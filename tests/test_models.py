@@ -17,6 +17,7 @@ def test_issue_row_from_jira_issue():
             priority="High",
             assignee={"displayName": "John Doe", "key": "john"},
             labels=["bug", "urgent"],
+            description="Detailed issue description",
             updated="2026-06-23T10:30:00.000+0000",
         ),
     )
@@ -29,6 +30,7 @@ def test_issue_row_from_jira_issue():
     assert row.priority == "High"
     assert row.assignee == "John Doe"
     assert row.labels == "bug, urgent"
+    assert row.description == "Detailed issue description"
 
 
 def test_dotenv_basic(tmp_path):

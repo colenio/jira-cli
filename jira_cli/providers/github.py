@@ -758,7 +758,8 @@ def _matches_item(item: dict[str, Any], filters: dict[str, str]) -> bool:
 
     content = item.get("content") or {}
     status_val = item.get("fieldValueByName") or {}
-    status_name = status_val.get("name") if isinstance(status_val, dict) else "No Status"
+    status_name = status_val.get("name") if isinstance(status_val, dict) else ""
+    status_name = status_name or "No Status"
 
     if "status" in filters:
         target = filters["status"].casefold()

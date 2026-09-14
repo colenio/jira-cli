@@ -192,3 +192,11 @@ def test_github_project_repo_filter_matches_full_and_short_names() -> None:
     assert _matches_item(item, {"repo": "colenio/website-astro"})
     assert _matches_item(item, {"repo": "website-astro"})
     assert not _matches_item(item, {"repo": "colenio/jira-cli"})
+
+
+def test_github_project_status_filter_handles_null_status() -> None:
+    from jira_cli.providers.github import _matches_item
+
+    item = {"fieldValueByName": {"name": None}, "content": {}}
+
+    assert not _matches_item(item, {"status": "In Progress"})
