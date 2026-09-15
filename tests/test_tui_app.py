@@ -288,6 +288,22 @@ async def test_mention_suggester_preserves_comment_prefix():
     assert await suggester.get_suggestion("No mention here") is None
 
 
+async def test_comment_thread_is_focusable_and_tabbable(sample_issues):
+    from jira_cli.tui.features.issues.modals import CommentModal, CommentThreadMarkdown
+    from textual.widgets import TextArea
+
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        app.push_screen(CommentModal("A-1", "\n\n".join(f"Comment {index}" for index in range(30))))
+        await pilot.pause()
+
+        assert isinstance(app.screen.focused, CommentThreadMarkdown)
+        await pilot.press("tab")
+        assert isinstance(app.screen.focused, TextArea)
+        await pilot.press("shift+tab")
+        assert isinstance(app.screen.focused, CommentThreadMarkdown)
+
+
 async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
     client = FakeJiraClient()
     app = JiraApp(

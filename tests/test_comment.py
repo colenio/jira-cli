@@ -67,3 +67,16 @@ def test_adf_comment_body_preserves_markdown_structure():
     thread = feature.thread_view("COM-238")
 
     assert "- [Docs](https://example.com)" in thread
+
+
+def test_thread_view_separates_comments_with_markdown_rule():
+    feature = JiraCommentFeature(CommentProvider())
+    feature._issue_comments["COM-238"] = [
+        {"author": {"displayName": "Ada"}, "created": "2026-01-01", "body": "First"},
+        {"author": {"displayName": "Grace"}, "created": "2026-01-02", "body": "Second"},
+    ]
+
+    thread = feature.thread_view("COM-238")
+
+    assert thread.count("\n\n---\n\n") == 1
+    assert thread.index("First") < thread.index("---") < thread.index("Second")

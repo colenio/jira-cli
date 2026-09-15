@@ -192,7 +192,7 @@ class JiraCommentFeature:
             author = comment.get("author", {}).get("displayName", "unknown")
             created = str(comment.get("created", ""))[:19]
             parts.append(f"**@{author}** {created}\n\n{self._extract_comment_text(comment)}")
-        return "\n\n".join(parts)
+        return "\n\n---\n\n".join(parts)
 
 
     @staticmethod

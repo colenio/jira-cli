@@ -1,6 +1,7 @@
 """Modal forms for editing issues and writing comments."""
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Markdown, TextArea
@@ -10,6 +11,32 @@ class CommentThreadMarkdown(Markdown):
     """Focusable, keyboard-scrollable Markdown comment thread."""
 
     can_focus = True
+    BINDINGS = [
+        Binding("up,k", "scroll_up", "Scroll up", show=False),
+        Binding("down,j", "scroll_down", "Scroll down", show=False),
+        Binding("pageup", "page_up", "Page up", show=False),
+        Binding("pagedown", "page_down", "Page down", show=False),
+        Binding("home", "scroll_home", "First comment", show=False),
+        Binding("end", "scroll_end", "Last comment", show=False),
+    ]
+
+    def action_scroll_up(self) -> None:
+        self.scroll_up()
+
+    def action_scroll_down(self) -> None:
+        self.scroll_down()
+
+    def action_page_up(self) -> None:
+        self.scroll_page_up()
+
+    def action_page_down(self) -> None:
+        self.scroll_page_down()
+
+    def action_scroll_home(self) -> None:
+        self.scroll_home()
+
+    def action_scroll_end(self) -> None:
+        self.scroll_end()
 
 
 class EditIssueModal(ModalScreen[dict | None]):
@@ -141,13 +168,6 @@ class CommentModal(ModalScreen[str | None]):
             self._send()
             event.prevent_default()
             return
-        thread = self.query_one("#comment_thread", CommentThreadMarkdown)
-        if event.key == "pageup":
-            thread.scroll_page_up()
-            event.prevent_default()
-        elif event.key == "pagedown":
-            thread.scroll_page_down()
-            event.prevent_default()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "comment_cancel":
