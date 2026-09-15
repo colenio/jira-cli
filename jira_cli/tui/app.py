@@ -830,8 +830,12 @@ class JiraApp(App):
             return
 
         self.pending_issue_key = context.issue_key
+        try:
+            mention_users = self.client.list_assignable_users(self.project_key, max_results=100)
+        except Exception:
+            mention_users = []
         self.push_screen(
-            CommentModal(issue.key, self.comment_feature.thread_view(issue.key)),
+            CommentModal(issue.key, self.comment_feature.thread_view(issue.key), mention_users=mention_users),
             lambda text: self.run_worker(self._submit_comment(text), exclusive=True) if text else None,
         )
 

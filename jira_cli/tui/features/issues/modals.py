@@ -131,6 +131,10 @@ class CommentModal(ModalScreen[str | None]):
         height: 8;
         margin: 1 0;
     }
+    #mention_suggestion {
+        height: 1;
+        color: $text-muted;
+    }
     #comment_buttons {
         height: auto;
         align: right middle;
@@ -140,16 +144,19 @@ class CommentModal(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, issue_key: str, thread: str):
+    def __init__(self, issue_key: str, thread: str, mention_users: list[dict] | None = None):
         super().__init__()
         self.issue_key = issue_key
         self.thread = thread
+        self.mention_users = mention_users or []
+        self._mention_replacement: tuple[tuple[int, int], tuple[int, int], str] | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="comment_modal"):
             yield Label(f"Comments for {self.issue_key}", classes="modal-title")
             yield CommentThreadMarkdown(self.thread or "No comments yet", id="comment_thread", open_links=False)
             yield TextArea(placeholder="Write a comment...", id="comment_editor")
+            yield Label("", id="mention_suggestion")
             with Horizontal(id="comment_buttons"):
                 yield Button("Cancel", id="comment_cancel")
                 yield Button("Send", variant="primary", id="comment_send")
@@ -168,12 +175,55 @@ class CommentModal(ModalScreen[str | None]):
             self._send()
             event.prevent_default()
             return
+        if event.key == "tab" and self._mention_replacement and self.focused.id == "comment_editor":
+            start, end, replacement = self._mention_replacement
+            editor = self.query_one("#comment_editor", TextArea)
+            editor.replace(replacement, start, end)
+            self._clear_mention_suggestion()
+            event.prevent_default()
+            event.stop()
+            return
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "comment_cancel":
             self.dismiss(None)
         elif event.button.id == "comment_send":
             self._send()
+
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if event.text_area.id != "comment_editor":
+            return
+        editor = event.text_area
+        row, column = editor.cursor_location
+        lines = editor.text.splitlines() or [""]
+        line = lines[row] if row < len(lines) else ""
+        prefix = line[:column]
+        token_start = prefix.rfind("@")
+        if token_start < 0:
+            self._clear_mention_suggestion()
+            return
+        token = prefix[token_start + 1 :]
+        if not token or any(char.isspace() for char in token):
+            self._clear_mention_suggestion()
+            return
+
+        token_lower = token.casefold()
+        for user in self.mention_users:
+            account_id = str(user.get("accountId", "")).lstrip("@")
+            display_name = str(user.get("displayName", ""))
+            if not account_id:
+                continue
+            if account_id.casefold().startswith(token_lower) or display_name.casefold().startswith(token_lower):
+                self._mention_replacement = ((row, token_start), (row, column), f"@{account_id}")
+                self.query_one("#mention_suggestion", Label).update(
+                    f"Tab: {display_name or account_id} (@{account_id})"
+                )
+                return
+        self._clear_mention_suggestion()
+
+    def _clear_mention_suggestion(self) -> None:
+        self._mention_replacement = None
+        self.query_one("#mention_suggestion", Label).update("")
 
     def _send(self) -> None:
         text = self.query_one("#comment_editor", TextArea).text

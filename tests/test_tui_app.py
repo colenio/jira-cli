@@ -304,6 +304,34 @@ async def test_comment_thread_is_focusable_and_tabbable(sample_issues):
         assert isinstance(app.screen.focused, CommentThreadMarkdown)
 
 
+async def test_comment_editor_completes_mentions_with_tab(sample_issues):
+    from jira_cli.tui.features.issues.modals import CommentModal
+    from textual.widgets import Label, TextArea
+
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        app.push_screen(
+            CommentModal(
+                "A-1",
+                "No comments yet",
+                mention_users=[{"displayName": "Julian Dannenberg", "accountId": "work-jdannenberg"}],
+            )
+        )
+        await pilot.pause()
+        await pilot.press("tab")
+        editor = app.screen.query_one("#comment_editor", TextArea)
+        editor.load_text("Please review @jul")
+        editor.move_cursor((0, len(editor.text)))
+        editor.post_message(TextArea.Changed(editor))
+        await pilot.pause()
+
+        suggestion = app.screen.query_one("#mention_suggestion", Label)
+        assert "Julian Dannenberg" in str(suggestion.render())
+
+        await pilot.press("tab")
+        assert editor.text == "Please review @work-jdannenberg"
+
+
 async def test_open_issue_works_in_board_mode(sample_issues, monkeypatch):
     client = FakeJiraClient()
     app = JiraApp(
