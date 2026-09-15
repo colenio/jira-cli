@@ -285,6 +285,27 @@ async def test_label_suggester_completes_last_comma_separated_token():
     assert await suggester.get_suggestion("backend, documentation") is None
 
 
+async def test_edit_modal_uses_right_for_label_completion_and_tab_for_focus(sample_issues):
+    from jira_cli.tui.features.issues.modals import EditIssueModal
+    from textual.widgets import Button, Input
+
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        app.push_screen(EditIssueModal("A-1", "Title", label_candidates=["documentation"]))
+        await pilot.pause()
+        labels = app.screen.query_one("#edit_labels", Input)
+        labels.focus()
+        labels.value = "doc"
+        labels.cursor_position = len(labels.value)
+        await pilot.pause()
+
+        await pilot.press("right")
+        assert labels.value == "documentation"
+
+        await pilot.press("tab")
+        assert isinstance(app.screen.focused, Button)
+
+
 def test_label_catalog_is_loaded_once(sample_issues):
     client = FakeJiraClient()
     calls = 0

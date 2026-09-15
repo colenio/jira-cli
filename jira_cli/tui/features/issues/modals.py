@@ -94,7 +94,7 @@ class EditIssueModal(ModalScreen[dict | None]):
             yield TextArea(self.initial_description, placeholder="Description", id="edit_description")
             yield Input(
                 value=self.initial_labels,
-                placeholder="Labels (comma-separated)",
+                placeholder="Labels (comma-separated; Right completes)",
                 suggester=LabelSuggester(self.label_candidates),
                 id="edit_labels",
             )
