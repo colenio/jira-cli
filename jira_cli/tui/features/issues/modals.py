@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Markdown, SelectionList, TextArea
+from textual.widgets import Button, Input, Label, Markdown, Select, SelectionList, TextArea
 
 
 class CommentThreadMarkdown(Markdown):
@@ -14,8 +14,8 @@ class CommentThreadMarkdown(Markdown):
     BINDINGS = [
         Binding("up,k", "scroll_up", "Scroll up", show=False),
         Binding("down,j", "scroll_down", "Scroll down", show=False),
-        Binding("pageup", "page_up", "Page up", show=False),
-        Binding("pagedown", "page_down", "Page down", show=False),
+        Binding("pageup,left_square_bracket,p", "page_up", "Previous page", show=False),
+        Binding("pagedown,right_square_bracket,n", "page_down", "Next page", show=False),
         Binding("home", "scroll_home", "First comment", show=False),
         Binding("end", "scroll_end", "Last comment", show=False),
     ]
@@ -76,23 +76,34 @@ class EditIssueModal(ModalScreen[dict | None]):
 
     def __init__(
         self,
-        issue_key: str,
-        title: str,
+        issue_key: str = "",
+        title: str = "",
         description: str = "",
         labels: str = "",
         label_candidates: list[str] | None = None,
+        repository_candidates: list[str] | None = None,
     ):
         super().__init__()
         self.issue_key = issue_key
+        self.creating = not issue_key
         self.initial_title = title
         self.initial_description = description
         self.initial_labels = labels
         self.label_candidates = label_candidates or []
+        self.repository_candidates = repository_candidates or []
         self.selected_labels = {label.strip() for label in labels.split(",") if label.strip()}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="edit_issue_modal"):
-            yield Label(f"Edit {self.issue_key}", classes="modal-title")
+            yield Label("New issue" if self.creating else f"Edit {self.issue_key}", classes="modal-title")
+            if self.creating and self.repository_candidates:
+                yield Select.from_values(
+                    self.repository_candidates,
+                    prompt="Repository",
+                    allow_blank=False,
+                    value=self.repository_candidates[0],
+                    id="issue_repository",
+                )
             yield Input(value=self.initial_title, placeholder="Title", id="edit_title")
             yield TextArea(self.initial_description, placeholder="Description", id="edit_description")
             yield Input(placeholder="Filter labels", id="label_filter")
@@ -106,13 +117,15 @@ class EditIssueModal(ModalScreen[dict | None]):
             self.dismiss(None)
             return
         if event.button.id == "edit_save":
-            self.dismiss(
-                {
-                    "summary": self.query_one("#edit_title", Input).value.strip(),
-                    "description": self.query_one("#edit_description", TextArea).text,
-                    "labels": sorted(self.selected_labels),
-                }
-            )
+            result = {
+                "action": "create" if self.creating else "edit",
+                "summary": self.query_one("#edit_title", Input).value.strip(),
+                "description": self.query_one("#edit_description", TextArea).text,
+                "labels": sorted(self.selected_labels),
+            }
+            if self.creating and self.repository_candidates:
+                result["repository"] = str(self.query_one("#issue_repository", Select).value)
+            self.dismiss(result)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Filter available labels without losing the current selection."""
@@ -192,7 +205,7 @@ class CommentModal(ModalScreen[str | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="comment_modal"):
             yield Label(f"Comments for {self.issue_key}", classes="modal-title")
-            yield CommentThreadMarkdown(self.thread or "No comments yet", id="comment_thread", open_links=False)
+            yield CommentThreadMarkdown(self.thread or "No comments yet", id="comment_thread", open_links=True)
             yield TextArea(placeholder="Write a comment...", id="comment_editor")
             yield Label("", id="mention_suggestion")
             with Horizontal(id="comment_buttons"):

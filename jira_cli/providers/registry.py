@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 import click
 
@@ -28,7 +29,13 @@ def jira_context(project: str | None = None) -> ProviderContext:
     target = project or os.environ.get("JIRA_PROJECT") or os.environ.get("JIRA_PROJECT_KEY")
     if not target:
         raise ValueError("Missing Jira project key. Use --project or set JIRA_PROJECT in local.env/.env")
-    return ProviderContext(name=f"jira:{target}", provider="jira", target=target, label=f"Jira / {target}")
+    base_url = os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL") or ""
+    hostname = urlparse(base_url).hostname or ""
+    site = hostname.split(".", 1)[0] if hostname else ""
+    suffix = f" ({site})" if site else ""
+    return ProviderContext(
+        name=f"jira:{target}", provider="jira", target=target, label=f"Jira / {target}{suffix}"
+    )
 
 
 def github_context(target: str) -> ProviderContext:

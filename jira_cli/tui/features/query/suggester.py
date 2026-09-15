@@ -38,10 +38,12 @@ class CommandSuggester(Suggester):
         self,
         issues_provider: Callable[[], list[IssueRow]],
         assignees_provider: Callable[[], list[str]] | None = None,
+        verbs_provider: Callable[[], list[str]] | None = None,
     ):
         super().__init__(use_cache=False, case_sensitive=False)
         self._issues_provider = issues_provider
         self._assignees_provider = assignees_provider
+        self._verbs_provider = verbs_provider
 
     async def get_suggestion(self, value: str) -> str | None:
         if value.lower().startswith("order="):
@@ -60,7 +62,8 @@ class CommandSuggester(Suggester):
                 match = self._first_prefix_match(candidates, arg)
                 return f"{prefix}{match}" if match else None
 
-        return self._first_prefix_match(_VERBS, value)
+        verbs = self._verbs_provider() if self._verbs_provider else _VERBS
+        return self._first_prefix_match(verbs, value)
 
     @staticmethod
     def _first_prefix_match(candidates: list[str], value: str) -> str | None:

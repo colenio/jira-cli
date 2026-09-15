@@ -29,6 +29,7 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
                 SortDescriptor(name="rank", field="Rank"),
             ),
             actions=(
+                ActionDescriptor(name="create"),
                 ActionDescriptor(name="comment"),
                 ActionDescriptor(name="assign"),
                 ActionDescriptor(name="transition"),
@@ -54,6 +55,7 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="labels",
             fields=("name", "issueCount"),
+            actions=(ActionDescriptor(name="edit"), ActionDescriptor(name="delete")),
         ),
     ),
 )
@@ -65,3 +67,27 @@ class JiraProvider(JiraClient):
     def describe(self) -> ProviderDescriptor:
         """Describe Jira-native resources and capabilities."""
         return JIRA_PROVIDER_DESCRIPTOR
+
+    def update_label(
+        self, project_key: str, name: str, new_name: str, color: str, description: str = ""
+    ) -> dict:
+        """Rename a Jira label on every matching issue in the project."""
+        issues = self._jira.enhanced_search_issues(
+            jql_str=f'project = {project_key} AND labels = "{name}"',
+            maxResults=False,
+            fields=["labels"],
+        )
+        for issue in issues:
+            labels = [new_name if label == name else label for label in (issue.fields.labels or [])]
+            issue.update(fields={"labels": list(dict.fromkeys(labels))})
+        return {"name": new_name, "issueCount": len(issues)}
+
+    def delete_label(self, project_key: str, name: str) -> None:
+        """Remove a Jira label from every matching issue in the project."""
+        issues = self._jira.enhanced_search_issues(
+            jql_str=f'project = {project_key} AND labels = "{name}"',
+            maxResults=False,
+            fields=["labels"],
+        )
+        for issue in issues:
+            issue.update(fields={"labels": [label for label in (issue.fields.labels or []) if label != name]})

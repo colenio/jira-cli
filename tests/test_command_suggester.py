@@ -52,6 +52,13 @@ async def test_suggests_assignee_from_external_user_catalog(issues):
     assert await suggester.get_suggestion("assignee=Tob") == "assignee=Tobias Braun"
 
 
+async def test_suggests_contextual_resource_action(issues):
+    suggester = CommandSuggester(lambda: issues, verbs_provider=lambda: ["labels", "create", "edit"])
+
+    assert await suggester.get_suggestion("cre") == "create"
+    assert await suggester.get_suggestion("del") is None
+
+
 async def test_suggests_priority_value(suggester):
     assert await suggester.get_suggestion("priority=h") == "priority=High"
 

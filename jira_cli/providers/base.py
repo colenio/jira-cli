@@ -140,15 +140,17 @@ class IssueTrackerProvider(Protocol):
         """List labels/tags for a project/repository context."""
         ...
 
-    def create_label(self, name: str, color: str, description: str = "") -> dict:
+    def create_label(self, project_key: str, name: str, color: str, description: str = "") -> dict:
         """Create a label in the active provider context."""
         ...
 
-    def update_label(self, name: str, new_name: str, color: str, description: str = "") -> dict:
+    def update_label(
+        self, project_key: str, name: str, new_name: str, color: str, description: str = ""
+    ) -> dict:
         """Update a label in the active provider context."""
         ...
 
-    def delete_label(self, name: str) -> None:
+    def delete_label(self, project_key: str, name: str) -> None:
         """Delete a label from the active provider context."""
         ...
 
@@ -162,6 +164,25 @@ class IssueTrackerProvider(Protocol):
 
     def update_issue(self, key: str, fields: dict) -> None:
         """Update supported issue fields, such as the summary/title."""
+        ...
+
+    def create_issue(
+        self,
+        project_key: str,
+        title: str,
+        body: str | dict | None = None,
+        issue_type: str = "Task",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        priority: str | None = None,
+        parent: str | None = None,
+        repository: str | None = None,
+    ) -> dict:
+        """Create an issue in the active provider context."""
+        ...
+
+    def list_issue_repositories(self) -> list[str]:
+        """List repositories available for issue creation in this context."""
         ...
 
     def get_transitions(self, key: str) -> list[dict]:

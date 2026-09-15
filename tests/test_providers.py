@@ -1,5 +1,7 @@
 """Tests for provider descriptors and provider-level capabilities."""
 
+from types import SimpleNamespace
+
 from jira_cli.providers.demo import DemoProvider
 from jira_cli.providers.github import GITHUB_PROVIDER_DESCRIPTOR, GitHubProvider
 from jira_cli.providers.jira import JIRA_PROVIDER_DESCRIPTOR
@@ -61,12 +63,14 @@ def test_registry_resolves_explicit_demo_target() -> None:
 
 def test_registry_resolves_jira_context_from_env(monkeypatch) -> None:
     monkeypatch.setenv("JIRA_PROJECT", "COM")
+    monkeypatch.setenv("JIRA_URL", "https://herrenknecht.atlassian.net")
 
     context = ProviderRegistry(load_env=False).resolve_context(provider="jira")
 
     assert context.name == "jira:COM"
     assert context.provider == "jira"
     assert context.target == "COM"
+    assert context.label == "Jira / COM (herrenknecht)"
 
 
 def test_registry_resolves_explicit_github_repository() -> None:
@@ -224,6 +228,40 @@ def test_github_project_reporter_filter_matches_author() -> None:
     assert _matches_item(item, {"reporter": "mkoertgen"})
     assert _matches_item(item, {"reporter": "Marcel"})
     assert not _matches_item(item, {"reporter": "someone-else"})
+
+
+def test_github_project_lists_repositories_from_items() -> None:
+    from jira_cli.providers.github import GitHubProjectProvider
+
+    provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
+    provider._fetch_all_items = lambda: [
+        {"content": {"repository": {"nameWithOwner": "colenio/website-astro"}}},
+        {"content": {"repository": {"nameWithOwner": "colenio/colenio-infra"}}},
+        {"content": {"repository": {"nameWithOwner": "colenio/website-astro"}}},
+        {"content": None},
+    ]
+
+    assert provider.list_issue_repositories() == ["colenio/colenio-infra", "colenio/website-astro"]
+
+
+def test_github_project_create_issue_adds_created_issue_to_project() -> None:
+    from jira_cli.providers.github import GitHubProjectProvider
+
+    calls = []
+    issue = SimpleNamespace(number=7, node_id="I_kwDO123", html_url="https://github.com/colenio/jira-cli/issues/7")
+    issues_api = SimpleNamespace(create=lambda owner, repo, **payload: SimpleNamespace(parsed_data=issue))
+    github = SimpleNamespace(
+        rest=SimpleNamespace(issues=issues_api),
+        graphql=lambda query, variables: calls.append((query, variables)),
+    )
+    provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
+    provider._github = github
+    provider._project_id = "PVT_123"
+
+    created = provider.create_issue("colenio/21", "New issue", repository="colenio/jira-cli")
+
+    assert created["key"] == "jira-cli#7"
+    assert calls[0][1] == {"projectId": "PVT_123", "contentId": "I_kwDO123"}
 
 
 def test_github_project_comment_lookup_uses_item_repository() -> None:

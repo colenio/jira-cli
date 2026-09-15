@@ -34,6 +34,7 @@ _REPO_GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
                 SortDescriptor(name="comments", field="comments", default_direction="desc"),
             ),
             actions=(
+                ActionDescriptor(name="create"),
                 ActionDescriptor(name="transition", requires_comment=False),
                 ActionDescriptor(name="assign", requires_comment=False),
                 ActionDescriptor(name="comment", requires_comment=False),
@@ -228,6 +229,7 @@ class GitHubProjectProvider:
                         SortDescriptor(name="key", field="key", default_direction="asc"),
                     ),
                     actions=(
+                        ActionDescriptor(name="create"),
                         ActionDescriptor(name="transition", requires_comment=False),
                         ActionDescriptor(name="comment", requires_comment=True),
                         ActionDescriptor(name="assign", requires_comment=False),
@@ -270,6 +272,47 @@ class GitHubProjectProvider:
             startAt=start_at,
             maxResults=max_results,
         )
+
+    def list_issue_repositories(self) -> list[str]:
+        """Return repositories represented by issue/PR items on this project."""
+        repositories = set()
+        for item in self._fetch_all_items():
+            content = item.get("content") or {}
+            repository = content.get("repository") or {}
+            name = repository.get("nameWithOwner") if isinstance(repository, dict) else ""
+            if name:
+                repositories.add(name)
+        return sorted(repositories, key=str.casefold)
+
+    def create_issue(
+        self,
+        project_key: str,
+        title: str,
+        body: str | dict | None = None,
+        issue_type: str = "Task",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        priority: str | None = None,
+        parent: str | None = None,
+        repository: str | None = None,
+    ) -> dict:
+        """Create an issue in a selected repository and add it to this Project V2."""
+        if not repository or "/" not in repository:
+            raise ValueError("Select a repository before creating a GitHub Project issue")
+        owner, repo_name = repository.split("/", 1)
+        payload = {"title": title, "body": body if isinstance(body, str) else "", "labels": labels or []}
+        if assignee:
+            payload["assignees"] = [self._resolve_assignee_login(assignee)]
+        issue = self._github.rest.issues.create(owner, repo_name, **payload).parsed_data
+        mutation = """
+        mutation AddProjectItem($projectId: ID!, $contentId: ID!) {
+          addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+            item { id }
+          }
+        }
+        """
+        self._github.graphql(mutation, {"projectId": self._project_id, "contentId": issue.node_id})
+        return {"key": f"{repo_name}#{issue.number}", "number": issue.number, "html_url": str(issue.html_url)}
 
     def _fetch_all_items(self) -> list[dict[str, Any]]:
         """Fetch all Project V2 items with GraphQL pagination."""
@@ -1049,7 +1092,7 @@ class GitHubProvider:
         ).parsed_data
         return [_label_dict(label, self._label_issue_count(label)) for label in labels]
 
-    def create_label(self, name: str, color: str, description: str = "") -> dict:
+    def create_label(self, project_key: str, name: str, color: str, description: str = "") -> dict:
         """Create a repository label."""
         if self._delegate:
             raise NotImplementedError("GitHub Project contexts do not own a label catalog")
@@ -1058,7 +1101,9 @@ class GitHubProvider:
         ).parsed_data
         return _label_dict(label)
 
-    def update_label(self, name: str, new_name: str, color: str, description: str = "") -> dict:
+    def update_label(
+        self, project_key: str, name: str, new_name: str, color: str, description: str = ""
+    ) -> dict:
         """Update a repository label."""
         if self._delegate:
             raise NotImplementedError("GitHub Project contexts do not own a label catalog")
@@ -1070,7 +1115,7 @@ class GitHubProvider:
         ).parsed_data
         return _label_dict(label)
 
-    def delete_label(self, name: str) -> None:
+    def delete_label(self, project_key: str, name: str) -> None:
         """Delete a repository label."""
         if self._delegate:
             raise NotImplementedError("GitHub Project contexts do not own a label catalog")
@@ -1134,6 +1179,51 @@ class GitHubProvider:
         if not update_fields:
             raise ValueError("No supported issue fields supplied")
         self._github.rest.issues.update(self._owner, self._repo_name, _issue_number(key), **update_fields)
+
+    def create_issue(
+        self,
+        project_key: str,
+        title: str,
+        body: str | dict | None = None,
+        issue_type: str = "Task",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        priority: str | None = None,
+        parent: str | None = None,
+        repository: str | None = None,
+    ) -> dict:
+        """Create an issue in a repository or Project V2 context."""
+        if self._delegate:
+            return self._delegate.create_issue(
+                project_key,
+                title,
+                body=body,
+                issue_type=issue_type,
+                labels=labels,
+                assignee=assignee,
+                priority=priority,
+                parent=parent,
+                repository=repository,
+            )
+        payload = {
+            "title": title,
+            "body": body if isinstance(body, str) else "",
+            "labels": labels or [],
+        }
+        if assignee:
+            payload["assignees"] = [self._resolve_login(assignee)]
+        issue = self._github.rest.issues.create(
+            self._owner,
+            self._repo_name,
+            **payload,
+        ).parsed_data
+        return {"key": f"#{issue.number}", "number": issue.number, "html_url": str(issue.html_url)}
+
+    def list_issue_repositories(self) -> list[str]:
+        """Return repository choices for issue creation in this context."""
+        if self._delegate:
+            return self._delegate.list_issue_repositories()
+        return []
 
     def get_transitions(self, key: str) -> list[dict]:
         """Return available status transitions for an issue."""

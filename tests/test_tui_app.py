@@ -376,6 +376,31 @@ def test_label_management_actions_follow_provider_descriptor(sample_issues):
     assert app.check_action("delete_resource", ()) is False
 
 
+def test_new_action_follows_resource_create_capability(sample_issues):
+    from jira_cli.providers import ActionDescriptor, ResourceDescriptor
+
+    client = FakeJiraClient()
+    client.describe = lambda: ProviderDescriptor(
+        name="fake",
+        resources=(
+            ResourceDescriptor(kind="issues", actions=(ActionDescriptor(name="create"),)),
+            ResourceDescriptor(kind="labels", actions=(ActionDescriptor(name="create"),)),
+            ResourceDescriptor(kind="versions", actions=(ActionDescriptor(name="create"),)),
+        ),
+    )
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    for kind in ("issues", "labels", "versions"):
+        app.active_kind = kind
+        assert app.check_action("create_resource", ()) is True
+
+    app.active_kind = "users"
+    assert app.check_action("create_resource", ()) is False
+
+    visible_keys = [binding.key for binding in JiraApp.BINDINGS if binding.show]
+    assert visible_keys.index("n") < visible_keys.index("ctrl+t")
+
+
 async def test_mention_suggester_preserves_comment_prefix():
     from jira_cli.tui.features.comment.suggester import MentionSuggester
 
@@ -404,6 +429,14 @@ async def test_comment_thread_is_focusable_and_tabbable(sample_issues):
         assert isinstance(app.screen.focused, TextArea)
         await pilot.press("shift+tab")
         assert isinstance(app.screen.focused, CommentThreadMarkdown)
+
+        bracket_bindings = {binding.key: binding.action for binding in CommentThreadMarkdown.BINDINGS}
+        assert bracket_bindings["pageup,left_square_bracket,p"] == "page_up"
+        assert bracket_bindings["pagedown,right_square_bracket,n"] == "page_down"
+
+        app_binding_keys = {binding.key for binding in JiraApp.BINDINGS}
+        assert "left_square_bracket" not in app_binding_keys
+        assert "right_square_bracket" not in app_binding_keys
 
 
 async def test_comment_editor_completes_mentions_with_tab(sample_issues):
@@ -634,6 +667,48 @@ async def test_users_command_shows_assignable_users(app):
         assert app.active_kind == "users"
         assert app.query_one("#user_table").display is True
         assert "alice@example.com" in detail.render()
+
+
+async def test_users_view_uses_complete_sorted_cache_and_includes_current_user(sample_issues):
+    client = FakeJiraClient(assignable_users=["Tobias Braun", "Andreas Bauer"])
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    async with app.run_test() as pilot:
+        await app._submit_command("users")
+        await pilot.pause()
+
+        table = app.query_one("#user_table")
+        assert [user["displayName"] for user in table.users] == [
+            "Andreas Bauer",
+            "Marcel Körtgen",
+            "Tobias Braun",
+        ]
+        assert client.assignable_user_requests == [1000]
+
+
+async def test_slash_filter_in_users_view_filters_users_and_resolves_me(sample_issues):
+    client = FakeJiraClient(assignable_users=["Tobias Braun", "Andreas Bauer"])
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    async with app.run_test() as pilot:
+        app._show_assignable_users()
+        await app._apply_filter("tobias")
+        await pilot.pause()
+        assert [user["displayName"] for user in app.query_one("#user_table").users] == ["Tobias Braun"]
+
+        await app._apply_filter("me")
+        await pilot.pause()
+        assert [user["displayName"] for user in app.query_one("#user_table").users] == ["Marcel Körtgen"]
+
+
+def test_theme_toggle_switches_light_and_dark(sample_issues):
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    app.theme = "textual-dark"
+    app.action_toggle_theme()
+    assert app.theme == "textual-light"
+    app.action_toggle_theme()
+    assert app.theme == "textual-dark"
 
 
 async def test_user_search_command_uses_project_fallback(app):

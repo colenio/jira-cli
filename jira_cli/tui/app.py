@@ -11,7 +11,7 @@ from textual.binding import Binding
 from jira_cli.models import IssueRow
 from jira_cli.providers import IssueTrackerProvider, ProviderContext
 from jira_cli.query import JiraQuery, order_by_clause
-from jira_cli.quick_filters import QuickFilterResolver
+from jira_cli.quick_filters import QuickFilterResolver, normalize_for_match
 from jira_cli.tui.features.board import BoardWidget
 from jira_cli.tui.features.board.service import DEFAULT_STATUS_ORDER
 from jira_cli.tui.features.comment import JiraCommentFeature
@@ -29,7 +29,7 @@ from jira_cli.tui.features.query.service import (
     run_remote_query,
 )
 from jira_cli.tui.features.query.suggester import CommandSuggester
-from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, list_project_users, search_project_users
+from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, search_project_users
 from jira_cli.tui.features.users.modals import UserIssuesModal
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget, list_project_versions
 from jira_cli.tui.features.versions.modals import VersionModal
@@ -50,19 +50,18 @@ class JiraApp(App):
         Binding("f", "focus_find", "Find", show=True),
         Binding("j", "focus_jql", "Query", show=True),
         Binding("colon", "focus_command", "Command", show=True),
+        Binding("n", "create_resource", "New", show=True),
+        Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("b", "toggle_board", "Board", show=True),
         Binding("v", "open_issue", "Open in Browser", show=True),
         Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("t", "transition", "Transition", show=True),
         Binding("a", "assign", "Assign", show=True),
         Binding("e", "edit_resource", "Edit", show=True),
-        Binding("insert", "create_resource", "Create", show=True),
+        Binding("insert", "create_resource", "New", show=False),
         Binding("delete", "delete_resource", "Delete", show=True),
         Binding("i", "issues_for_resource", "Issues", show=True),
         Binding("c", "comment", "Comment", show=True),
-        Binding("n", "next_comment", "NextComment", show=True),
-        Binding("left_square_bracket", "prev_comment", "PrevComment", show=False),
-        Binding("right_square_bracket", "next_comment", "NextComment", show=False),
         Binding("u", "drill_up", "Parent", show=True),
         Binding("d", "drill_down", "Children", show=True),
         Binding("r", "refresh", "Refresh", show=True),
@@ -161,7 +160,11 @@ class JiraApp(App):
         self.board_visible = False
         self.comment_feature = JiraCommentFeature(client)
         self.workflow_feature = JiraWorkflowFeature(client)
-        self.command_suggester = CommandSuggester(lambda: self.all_issues, self._assignee_suggestion_names)
+        self.command_suggester = CommandSuggester(
+            lambda: self.all_issues,
+            self._assignee_suggestion_names,
+            self._command_verbs,
+        )
 
     def _load_mention_users(self) -> list[dict]:
         """Load the complete assignable-user catalog once per TUI context."""
@@ -170,6 +173,17 @@ class JiraApp(App):
                 self._mention_users = self.client.list_assignable_users(self.project_key, max_results=1000)
             except Exception:
                 self._mention_users = []
+            try:
+                current_user = self.client.get_current_user()
+            except Exception:
+                current_user = {}
+            current_id = current_user.get("accountId")
+            if current_user and not any(
+                user.get("accountId") == current_id
+                or user.get("displayName") == current_user.get("displayName")
+                for user in self._mention_users
+            ):
+                self._mention_users.append(current_user)
         return self._mention_users
 
     def _assignee_suggestion_names(self) -> list[str]:
@@ -317,7 +331,7 @@ class JiraApp(App):
         """Expose only actions that make sense for the active resource and provider."""
         issue_actions = {
             "focus_find", "focus_jql", "toggle_board", "open_issue", "transition", "assign",
-            "comment", "next_comment", "prev_comment", "drill_up", "drill_down",
+            "comment", "drill_up", "drill_down",
         }
         if action in issue_actions:
             return self.active_kind == "issues"
@@ -328,7 +342,7 @@ class JiraApp(App):
                 self.active_kind, "edit"
             )
         if action == "create_resource":
-            return self.active_kind in {"labels", "versions"} and self._resource_supports_action(
+            return self.active_kind in {"issues", "labels", "versions"} and self._resource_supports_action(
                 self.active_kind, "create"
             )
         if action == "delete_resource":
@@ -342,6 +356,24 @@ class JiraApp(App):
     def _resource_supports_action(self, kind: str, action: str) -> bool:
         resource = self.client.describe().resource(kind)
         return bool(resource and any(item.name == action for item in resource.actions))
+
+    def _command_verbs(self) -> list[str]:
+        """Return command-palette verbs available in the current resource context."""
+        verbs = ["issues", "users", "labels", "versions", "milestones", "clear"]
+        if self.active_kind == "issues":
+            verbs.extend([
+                "table", "board", "view", "open", "next", "me", "overdue", "overdue=me", "order=",
+                *(f"{verb}=" for verb in QUICK_FILTER_DIMENSIONS),
+            ])
+        elif self.active_kind == "users":
+            verbs.append("user=")
+        for action in ("create", "edit", "delete"):
+            action_name = f"{action}_resource" if action != "edit" else "edit_resource"
+            if self.check_action(action_name, ()):
+                verbs.append(action)
+        if self.check_action("issues_for_resource", ()) and self.active_kind != "issues":
+            verbs.append("related")
+        return verbs
 
     def _restore_active_focus(self, preferred_key: str | None = None) -> None:
         """Return focus to the active main widget (table, board, users, labels, versions)."""
@@ -379,6 +411,13 @@ class JiraApp(App):
     def _show_filter_input(self) -> None:
         """Show filter input and focus it."""
         filter_input = self.query_one("#filter_input", Input)
+        placeholders = {
+            "issues": "Filter issues (key/summary/status/assignee)",
+            "users": "Filter users by name/email; use 'me' for current user",
+            "versions": "Filter versions/milestones by name/status/date",
+            "labels": "Filter labels by name/description",
+        }
+        filter_input.placeholder = placeholders[self.active_kind]
         filter_input.disabled = False
         filter_input.display = True
         filter_input.focus()
@@ -423,7 +462,48 @@ class JiraApp(App):
         self._prefetch_comments_for_issue(selected_issue)
 
     async def _apply_filter(self, filter_text: str) -> None:
-        """Apply the live '/' text filter to the currently loaded (already server-filtered) issues."""
+        """Apply the live '/' filter to the active resource view."""
+        if self.active_kind == "users":
+            query = normalize_for_match(filter_text)
+            if query == "me":
+                query = normalize_for_match(self.current_user_display_name)
+            users = [
+                user
+                for user in self.users
+                if not query
+                or query in normalize_for_match(str(user.get("displayName", "")))
+                or query in normalize_for_match(str(user.get("emailAddress", "")))
+                or query in normalize_for_match(str(user.get("accountId", "")))
+            ]
+            selected = self.query_one("#user_table", UserTableWidget).replace_rows(users)
+            self.query_one("#user_detail", UserDetailWidget).update_user(selected)
+            return
+        if self.active_kind == "versions":
+            query = normalize_for_match(filter_text)
+            versions = [
+                version
+                for version in self.versions
+                if not query
+                or query in normalize_for_match(str(version.get("name", "")))
+                or query in normalize_for_match("released" if version.get("released") else "unreleased")
+                or query in normalize_for_match(str(version.get("releaseDate", "")))
+            ]
+            selected = self.query_one("#version_table", VersionTableWidget).replace_rows(versions)
+            self.query_one("#version_detail", VersionDetailWidget).update_version(selected)
+            return
+        if self.active_kind == "labels":
+            query = normalize_for_match(filter_text)
+            labels = [
+                label
+                for label in self.labels
+                if not query
+                or query in normalize_for_match(str(label.get("name", "")))
+                or query in normalize_for_match(str(label.get("description", "")))
+            ]
+            selected = self.query_one("#label_table", LabelTableWidget).replace_rows(labels)
+            self.query_one("#label_detail", LabelDetailWidget).update_label(selected)
+            return
+
         table = self.query_one("#issue_table", IssueTableWidget)
         current = table.get_selected_issue()
         preferred_key = current.key if current else None
@@ -527,7 +607,8 @@ class JiraApp(App):
         if not fields.get("summary"):
             self.notify("Title is empty", severity="warning")
             return
-        self.client.update_issue(self.pending_issue_key, fields)
+        update_fields = {key: value for key, value in fields.items() if key != "action"}
+        self.client.update_issue(self.pending_issue_key, update_fields)
         self.notify(f"Updated {self.pending_issue_key}")
         await self.action_refresh()
 
@@ -603,9 +684,7 @@ class JiraApp(App):
         mode_label.update("MODE: COMMAND (INPUT)")
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = self.command_suggester
-        self._show_query_input(
-            "issues/table/board | users/user=<q>/labels/versions | type/status/assignee/label/priority=<value> | order=<field> | overdue[=me] | clear"
-        )
+        self._show_query_input(" | ".join(self._command_verbs()))
 
     async def _submit_command(self, expression: str) -> None:
         """Parse and apply a ':' command: view switch, quick filter, or clear."""
@@ -619,6 +698,27 @@ class JiraApp(App):
             return
         if verb in ("v", "view", "open"):
             self.action_open_issue()
+            return
+        if verb == "create":
+            if not self.check_action("create_resource", ()):
+                self.notify("Create is not available in this context", severity="warning")
+                return
+            self.action_create_resource()
+            return
+        if verb == "edit":
+            if not self.check_action("edit_resource", ()):
+                self.notify("Edit is not available in this context", severity="warning")
+                return
+            self.action_edit_resource()
+            return
+        if verb == "delete":
+            if not self.check_action("delete_resource", ()):
+                self.notify("Delete is not available in this context", severity="warning")
+                return
+            self.action_delete_resource()
+            return
+        if verb == "related":
+            await self.action_issues_for_resource()
             return
         if verb == "next":
             issue = self._selected_issue()
@@ -722,7 +822,16 @@ class JiraApp(App):
 
     def _show_assignable_users(self) -> None:
         """Show project assignable users as the active user resource view."""
-        self._replace_users(list_project_users(self.client, self.project_key), f"Source: users in {self.project_key}")
+        users = sorted(
+            self._load_mention_users(),
+            key=lambda user: normalize_for_match(str(user.get("displayName") or user.get("accountId") or "")),
+        )
+        self._replace_users(users, f"Source: users in {self.project_key}")
+
+    def action_toggle_theme(self) -> None:
+        """Toggle between Textual's default dark and light themes."""
+        self.theme = "textual-light" if self.theme == "textual-dark" else "textual-dark"
+        self.notify(f"Theme: {self.theme}")
 
     def _show_user_search(self, query: str) -> None:
         """Search users as the active user resource view."""
@@ -902,10 +1011,37 @@ class JiraApp(App):
 
     def action_create_resource(self) -> None:
         """Open a create modal for the active resource."""
-        if self.active_kind == "labels":
+        if self.active_kind == "issues":
+            repositories = self.client.list_issue_repositories() if hasattr(self.client, "list_issue_repositories") else []
+            if self.context.provider == "github" and self.client.describe().supports_board and not repositories:
+                self.notify("No repository is available for issue creation in this project", severity="warning")
+                return
+            self.push_screen(
+                EditIssueModal(label_candidates=self._label_names(), repository_candidates=repositories),
+                self._handle_new_issue_result,
+            )
+        elif self.active_kind == "labels":
             self.push_screen(LabelModal(), self._handle_label_result)
         elif self.active_kind == "versions":
             self.push_screen(VersionModal(), self._handle_version_result)
+
+    def _handle_new_issue_result(self, result: dict | None) -> None:
+        """Create a new issue from the common issue modal."""
+        if not result or not result.get("summary"):
+            return
+        try:
+            created = self.client.create_issue(
+                self.project_key,
+                result["summary"],
+                body=result.get("description") or None,
+                labels=result.get("labels") or None,
+                repository=result.get("repository") or None,
+            )
+            key = created.get("key", "issue")
+            self.notify(f"Created {key}")
+            self.run_worker(self.action_refresh(), exclusive=True)
+        except Exception as exc:
+            self.notify(f"Issue creation failed: {escape(str(exc))}", severity="error")
 
     def action_delete_resource(self) -> None:
         """Open the selected resource in delete-ready edit mode."""
@@ -919,20 +1055,31 @@ class JiraApp(App):
         if not label:
             self.notify("No label selected", severity="warning")
             return
-        self.push_screen(LabelModal(label), self._handle_label_result)
+        resource = self.client.describe().resource("labels")
+        supports_metadata = bool(resource and "color" in resource.fields)
+        self.push_screen(
+            LabelModal(label, supports_metadata=supports_metadata, bulk=self.context.provider == "jira"),
+            self._handle_label_result,
+        )
 
     def _handle_label_result(self, result: dict | None) -> None:
         if not result:
             return
         try:
             if result["action"] == "create":
-                self.client.create_label(result["name"], result["color"], result["description"])
+                self.client.create_label(
+                    self.project_key, result["name"], result["color"], result["description"]
+                )
             elif result["action"] == "edit":
                 self.client.update_label(
-                    result["original_name"], result["name"], result["color"], result["description"]
+                    self.project_key,
+                    result["original_name"],
+                    result["name"],
+                    result["color"],
+                    result["description"],
                 )
             elif result["action"] == "delete":
-                self.client.delete_label(result["name"])
+                self.client.delete_label(self.project_key, result["name"])
             self._labels_loaded = False
             self._show_labels()
             self.notify("Labels updated")
@@ -1038,30 +1185,6 @@ class JiraApp(App):
             CommentModal(issue.key, self.comment_feature.thread_view(issue.key), mention_users=mention_users),
             lambda text: self.run_worker(self._submit_comment(text), exclusive=True) if text else None,
         )
-
-    def action_next_comment(self) -> None:
-        """Select next comment for the selected issue."""
-        issue = self._selected_issue()
-        if not issue:
-            self.notify("No issue selected", severity="warning")
-            return
-        moved = self.comment_feature.next_comment(issue.key)
-        if not moved:
-            self.notify("No comments on this issue", severity="warning")
-            return
-        self.update_issue_detail(issue)
-
-    def action_prev_comment(self) -> None:
-        """Select previous comment for the selected issue."""
-        issue = self._selected_issue()
-        if not issue:
-            self.notify("No issue selected", severity="warning")
-            return
-        moved = self.comment_feature.prev_comment(issue.key)
-        if not moved:
-            self.notify("No comments on this issue", severity="warning")
-            return
-        self.update_issue_detail(issue)
 
     async def action_drill_up(self) -> None:
         """Drill up to parent issue."""
@@ -1290,8 +1413,6 @@ class JiraApp(App):
             "[cyan]t[/cyan]        Transition selected issue\n"
             "[cyan]a[/cyan]        Assign selected issue\n"
             "[cyan]c[/cyan]        Add comment (plain/md/adf)\n"
-            "[cyan]n / ][/cyan]    Next comment\n"
-            "[cyan][[/cyan]        Previous comment\n"
             "[cyan]u[/cyan]        Drill up to parent issue\n"
             "[cyan]d[/cyan]        Drill down to child issues\n"
             "[cyan]Esc[/cyan]      Close input or reset source\n"

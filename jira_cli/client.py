@@ -368,6 +368,7 @@ class JiraClient:
         assignee: Optional[str] = None,
         priority: Optional[str] = None,
         parent: Optional[str] = None,
+        repository: Optional[str] = None,
     ) -> dict:
         """Create a Jira issue and return its raw payload.
 
