@@ -6,7 +6,10 @@ from jira_cli.quick_filters import QuickFilterResolver
 
 class FakeClient:
     def __init__(self, assignable_users=None):
-        self.assignable_users = [{"displayName": name} for name in (assignable_users or [])]
+        self.assignable_users = [
+            user if isinstance(user, dict) else {"displayName": user}
+            for user in (assignable_users or [])
+        ]
 
     def find_assignable_users(self, project_key, query, max_results=20):
         return list(self.assignable_users)
@@ -39,6 +42,18 @@ def test_resolve_falls_back_to_server_side_assignable_users():
     display_value, clause = resolver.resolve("assignee", "koertgen", known_values=[])
     assert display_value == "Marcel Körtgen"
     assert clause == 'assignee = "Marcel Körtgen"'
+
+
+def test_resolve_assignee_uses_account_id_for_jira_clause():
+    resolver = QuickFilterResolver(
+        FakeClient(assignable_users=[{"displayName": "Andreas Bauer", "accountId": "jira-account-123"}]),
+        "PROJ",
+    )
+
+    display_value, clause = resolver.resolve("assignee", "Andreas Bauer", known_values=["Andreas Bauer"])
+
+    assert display_value == "Andreas Bauer"
+    assert clause == 'assignee = "jira-account-123"'
 
 
 def test_resolve_falls_back_to_raw_value_when_nothing_matches():

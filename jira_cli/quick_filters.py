@@ -87,13 +87,28 @@ class QuickFilterResolver:
             return "me", "assignee = currentUser()"
 
         resolved = resolve_value(known_values or [], value)
-        if not resolved and dimension == "assignee":
+        if dimension == "assignee":
+            lookup_value = resolved or value.strip()
             try:
-                users = self.client.find_assignable_users(self.project_key, value.strip())
-                candidates = [u["displayName"] for u in users if u.get("displayName")]
+                users = self.client.find_assignable_users(self.project_key, lookup_value)
             except Exception:
-                candidates = []
-            resolved = resolve_value(candidates, value)
+                users = []
+
+            matched_user = next(
+                (
+                    user
+                    for user in users
+                    if resolve_value(
+                        [str(user.get("displayName", "")), str(user.get("accountId", ""))],
+                        lookup_value,
+                    )
+                ),
+                None,
+            )
+            if matched_user:
+                display_value = str(matched_user.get("displayName") or matched_user.get("accountId") or lookup_value)
+                account_id = str(matched_user.get("accountId") or display_value)
+                return display_value, f"assignee = {jql_literal(account_id)}"
 
         display_value = resolved or value.strip()
         return display_value, self.clause(dimension, display_value)

@@ -33,6 +33,7 @@ def test_github_provider_describes_resources() -> None:
     assert {item.name for item in issues.filters} >= {"status", "assignee", "label", "milestone", "key"}
     assert {item.name for item in issues.sorts} >= {"created", "updated", "comments"}
     assert {item.name for item in issues.actions} >= {"transition", "assign", "comment"}
+    assert {item.name for item in labels.actions} == {"create", "edit", "delete"}
 
 
 def test_descriptor_resource_lookup_returns_none_for_unknown_kind() -> None:
@@ -86,6 +87,19 @@ def test_github_provider_descriptor_method_without_network() -> None:
     provider = GitHubProvider.__new__(GitHubProvider)
 
     assert provider.describe().name == "github"
+
+
+def test_github_assignee_me_resolves_to_current_user() -> None:
+    from jira_cli.providers.github import GitHubProjectProvider
+
+    repo_provider = GitHubProvider.__new__(GitHubProvider)
+    repo_provider.get_current_user = lambda: {"accountId": "mkoertgen"}
+    assert repo_provider._resolve_login("me") == "mkoertgen"
+    assert repo_provider._resolve_login("@me") == "mkoertgen"
+
+    project_provider = GitHubProjectProvider.__new__(GitHubProjectProvider)
+    project_provider.get_current_user = lambda: {"accountId": "mkoertgen"}
+    assert project_provider._resolve_assignee_login("me") == "mkoertgen"
 
 
 def test_github_label_dict_includes_issue_count() -> None:

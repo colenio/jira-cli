@@ -44,7 +44,12 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
-            actions=(ActionDescriptor(name="create"), ActionDescriptor(name="delete"),),
+            actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
+                ActionDescriptor(name="delete"),
+                ActionDescriptor(name="release"),
+            ),
         ),
         ResourceDescriptor(
             kind="labels",

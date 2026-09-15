@@ -18,6 +18,7 @@ from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.issues.modals import CommentModal, EditIssueModal
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
+from jira_cli.tui.features.labels.modals import LabelModal
 from jira_cli.tui.features.query.service import (
     QueryMode,
     QUICK_FILTER_DIMENSIONS,
@@ -29,7 +30,9 @@ from jira_cli.tui.features.query.service import (
 )
 from jira_cli.tui.features.query.suggester import CommandSuggester
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, list_project_users, search_project_users
+from jira_cli.tui.features.users.modals import UserIssuesModal
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget, list_project_versions
+from jira_cli.tui.features.versions.modals import VersionModal
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
 from jira_cli.tui.features.workflow.suggester import ActionSuggester
 from jira_cli.tui.header import JiraTopBar
@@ -52,7 +55,10 @@ class JiraApp(App):
         Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("t", "transition", "Transition", show=True),
         Binding("a", "assign", "Assign", show=True),
-        Binding("e", "edit_title", "Edit title", show=True),
+        Binding("e", "edit_resource", "Edit", show=True),
+        Binding("insert", "create_resource", "Create", show=True),
+        Binding("delete", "delete_resource", "Delete", show=True),
+        Binding("i", "issues_for_resource", "Issues", show=True),
         Binding("c", "comment", "Comment", show=True),
         Binding("n", "next_comment", "NextComment", show=True),
         Binding("left_square_bracket", "prev_comment", "PrevComment", show=False),
@@ -127,6 +133,7 @@ class JiraApp(App):
         self.all_issues = issues
         self.issues = issues
         self.users: list[dict] = []
+        self._mention_users: list[dict] | None = None
         self.versions: list[dict] = []
         self.labels: list[dict] = []
         self._labels_loaded = False
@@ -154,7 +161,24 @@ class JiraApp(App):
         self.board_visible = False
         self.comment_feature = JiraCommentFeature(client)
         self.workflow_feature = JiraWorkflowFeature(client)
-        self.command_suggester = CommandSuggester(lambda: self.all_issues)
+        self.command_suggester = CommandSuggester(lambda: self.all_issues, self._assignee_suggestion_names)
+
+    def _load_mention_users(self) -> list[dict]:
+        """Load the complete assignable-user catalog once per TUI context."""
+        if self._mention_users is None:
+            try:
+                self._mention_users = self.client.list_assignable_users(self.project_key, max_results=1000)
+            except Exception:
+                self._mention_users = []
+        return self._mention_users
+
+    def _assignee_suggestion_names(self) -> list[str]:
+        """Return display names from the complete cached user catalog."""
+        return [
+            str(user.get("displayName") or user.get("accountId") or "")
+            for user in self._load_mention_users()
+            if user.get("displayName") or user.get("accountId")
+        ]
 
     def _status_order(self) -> list[str]:
         """Return status order configured by provider descriptor or default."""
@@ -287,6 +311,37 @@ class JiraApp(App):
         else:
             self.query_one("#version_table", VersionTableWidget).focus()
         self._update_query_context()
+        self.refresh_bindings()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Expose only actions that make sense for the active resource and provider."""
+        issue_actions = {
+            "focus_find", "focus_jql", "toggle_board", "open_issue", "transition", "assign",
+            "comment", "next_comment", "prev_comment", "drill_up", "drill_down",
+        }
+        if action in issue_actions:
+            return self.active_kind == "issues"
+        if action == "edit_resource":
+            if self.active_kind == "issues":
+                return True
+            return self.active_kind in {"labels", "versions"} and self._resource_supports_action(
+                self.active_kind, "edit"
+            )
+        if action == "create_resource":
+            return self.active_kind in {"labels", "versions"} and self._resource_supports_action(
+                self.active_kind, "create"
+            )
+        if action == "delete_resource":
+            return self.active_kind in {"labels", "versions"} and self._resource_supports_action(
+                self.active_kind, "delete"
+            )
+        if action == "issues_for_resource":
+            return self.active_kind in {"labels", "versions", "users"}
+        return True
+
+    def _resource_supports_action(self, kind: str, action: str) -> bool:
+        resource = self.client.describe().resource(kind)
+        return bool(resource and any(item.name == action for item in resource.actions))
 
     def _restore_active_focus(self, preferred_key: str | None = None) -> None:
         """Return focus to the active main widget (table, board, users, labels, versions)."""
@@ -794,8 +849,8 @@ class JiraApp(App):
         except Exception:
             assignable = []
 
-        candidates = []
-        user_labels = []
+        candidates = ["me"]
+        user_labels = ["me (current user)"]
         for u in assignable:
             name = u.get("displayName") or ""
             acct = u.get("accountId") or ""
@@ -816,6 +871,16 @@ class JiraApp(App):
         self.notify(notice_text, timeout=8)
         self._show_query_input("Assignee name or @handle (press Tab for completion)")
 
+    def action_edit_resource(self) -> None:
+        """Edit the selected item in the active resource view."""
+        if self.active_kind == "labels":
+            self._edit_selected_label()
+            return
+        if self.active_kind == "versions":
+            self._edit_selected_version()
+            return
+        self.action_edit_title()
+
     def action_edit_title(self) -> None:
         """Open the common issue edit form."""
         issue = self._selected_issue()
@@ -835,6 +900,129 @@ class JiraApp(App):
             lambda fields: self.run_worker(self._submit_edit_fields(fields), exclusive=True) if fields else None,
         )
 
+    def action_create_resource(self) -> None:
+        """Open a create modal for the active resource."""
+        if self.active_kind == "labels":
+            self.push_screen(LabelModal(), self._handle_label_result)
+        elif self.active_kind == "versions":
+            self.push_screen(VersionModal(), self._handle_version_result)
+
+    def action_delete_resource(self) -> None:
+        """Open the selected resource in delete-ready edit mode."""
+        if self.active_kind == "labels":
+            self._edit_selected_label()
+        elif self.active_kind == "versions":
+            self._edit_selected_version()
+
+    def _edit_selected_label(self) -> None:
+        label = self.query_one("#label_table", LabelTableWidget).get_selected_label()
+        if not label:
+            self.notify("No label selected", severity="warning")
+            return
+        self.push_screen(LabelModal(label), self._handle_label_result)
+
+    def _handle_label_result(self, result: dict | None) -> None:
+        if not result:
+            return
+        try:
+            if result["action"] == "create":
+                self.client.create_label(result["name"], result["color"], result["description"])
+            elif result["action"] == "edit":
+                self.client.update_label(
+                    result["original_name"], result["name"], result["color"], result["description"]
+                )
+            elif result["action"] == "delete":
+                self.client.delete_label(result["name"])
+            self._labels_loaded = False
+            self._show_labels()
+            self.notify("Labels updated")
+        except Exception as exc:
+            self.notify(f"Label update failed: {escape(str(exc))}", severity="error")
+
+    def _edit_selected_version(self) -> None:
+        version = self.query_one("#version_table", VersionTableWidget).get_selected_version()
+        if not version:
+            self.notify("No version selected", severity="warning")
+            return
+        self.push_screen(VersionModal(version), self._handle_version_result)
+
+    def _handle_version_result(self, result: dict | None) -> None:
+        if not result:
+            return
+        try:
+            if result["action"] == "create":
+                self.client.create_version(
+                    self.project_key,
+                    result["name"],
+                    description=result["description"],
+                    release_date=result["releaseDate"] or None,
+                )
+                if result["released"]:
+                    self.client.update_version(self.project_key, result["name"], released=True)
+            elif result["action"] == "edit":
+                self.client.update_version(
+                    self.project_key,
+                    result["original_name"],
+                    name=result["name"],
+                    description=result["description"],
+                    release_date=result["releaseDate"],
+                    released=result["released"],
+                )
+            elif result["action"] == "delete":
+                self.client.delete_version(self.project_key, result["name"])
+            self._show_versions("Versions")
+            self.notify("Versions updated")
+        except Exception as exc:
+            self.notify(f"Version update failed: {escape(str(exc))}", severity="error")
+
+    async def action_issues_for_resource(self) -> None:
+        """Show issues related to the selected label, version, or user."""
+        if self.active_kind == "labels":
+            label = self.query_one("#label_table", LabelTableWidget).get_selected_label()
+            if not label:
+                self.notify("No label selected", severity="warning")
+                return
+            name = str(label.get("name", ""))
+            await self._run_jql_context(
+                f'project = {self.project_key} AND labels = "{name}"',
+                f"Source: issues with label {name}",
+            )
+            return
+
+        if self.active_kind == "versions":
+            version = self.query_one("#version_table", VersionTableWidget).get_selected_version()
+            if not version:
+                self.notify("No version selected", severity="warning")
+                return
+            name = str(version.get("name", ""))
+            field = "milestone" if self.context.provider == "github" else "fixVersion"
+            await self._run_jql_context(
+                f'project = {self.project_key} AND {field} = "{name}"',
+                f"Source: issues in {name}",
+            )
+            return
+
+        if self.active_kind == "users":
+            user = self.query_one("#user_table", UserTableWidget).get_selected_user()
+            if not user:
+                self.notify("No user selected", severity="warning")
+                return
+            self.push_screen(
+                UserIssuesModal(str(user.get("displayName") or user.get("accountId") or "user")),
+                lambda dimension: self.run_worker(self._show_user_issues(user, dimension), exclusive=True)
+                if dimension
+                else None,
+            )
+
+    async def _show_user_issues(self, user: dict, dimension: str) -> None:
+        """Show issues assigned to or reported by the selected user."""
+        account_id = str(user.get("accountId") or user.get("displayName") or "")
+        display_name = str(user.get("displayName") or account_id)
+        await self._run_jql_context(
+            f'project = {self.project_key} AND {dimension} = "{account_id}"',
+            f"Source: issues where {dimension} is {display_name}",
+        )
+
     def action_comment(self) -> None:
         """Open the comment thread and multiline composer."""
         issue = self._selected_issue()
@@ -845,10 +1033,7 @@ class JiraApp(App):
             return
 
         self.pending_issue_key = context.issue_key
-        try:
-            mention_users = self.client.list_assignable_users(self.project_key, max_results=100)
-        except Exception:
-            mention_users = []
+        mention_users = self._load_mention_users()
         self.push_screen(
             CommentModal(issue.key, self.comment_feature.thread_view(issue.key), mention_users=mention_users),
             lambda text: self.run_worker(self._submit_comment(text), exclusive=True) if text else None,

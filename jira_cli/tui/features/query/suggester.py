@@ -34,9 +34,14 @@ _VERBS = [
 class CommandSuggester(Suggester):
     """Suggests verbs (table/board/clear/type/status/assignee/label) and their values."""
 
-    def __init__(self, issues_provider: Callable[[], list[IssueRow]]):
+    def __init__(
+        self,
+        issues_provider: Callable[[], list[IssueRow]],
+        assignees_provider: Callable[[], list[str]] | None = None,
+    ):
         super().__init__(use_cache=False, case_sensitive=False)
         self._issues_provider = issues_provider
+        self._assignees_provider = assignees_provider
 
     async def get_suggestion(self, value: str) -> str | None:
         if value.lower().startswith("order="):
@@ -50,7 +55,8 @@ class CommandSuggester(Suggester):
                 arg = value[len(prefix):]
                 candidates = distinct_fn(self._issues_provider())
                 if verb == "assignee":
-                    candidates = ["me", *candidates]
+                    external = self._assignees_provider() if self._assignees_provider else []
+                    candidates = ["me", *sorted(set(candidates) | set(external))]
                 match = self._first_prefix_match(candidates, arg)
                 return f"{prefix}{match}" if match else None
 

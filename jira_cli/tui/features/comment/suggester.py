@@ -17,9 +17,6 @@ class MentionSuggester(Suggester):
             return None
 
         token = value[token_start + 1 :]
-        if any(char.isspace() for char in token):
-            return None
-
         token_lower = token.casefold()
         for candidate in self.candidates:
             if candidate.casefold().startswith(token_lower) and candidate.casefold() != token_lower:

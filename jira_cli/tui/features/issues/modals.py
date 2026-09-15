@@ -241,7 +241,7 @@ class CommentModal(ModalScreen[str | None]):
             self._clear_mention_suggestion()
             return
         token = prefix[token_start + 1 :]
-        if not token or any(char.isspace() for char in token):
+        if not token:
             self._clear_mention_suggestion()
             return
 
@@ -251,7 +251,9 @@ class CommentModal(ModalScreen[str | None]):
             display_name = str(user.get("displayName", ""))
             if not account_id:
                 continue
-            if account_id.casefold().startswith(token_lower) or display_name.casefold().startswith(token_lower):
+            account_match = " " not in token and account_id.casefold().startswith(token_lower)
+            display_name_match = display_name.casefold().startswith(token_lower)
+            if account_match or display_name_match:
                 self._mention_replacement = ((row, token_start), (row, column), f"@{account_id}")
                 self.query_one("#mention_suggestion", Label).update(
                     f"Tab: {display_name or account_id} (@{account_id})"

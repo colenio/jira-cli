@@ -47,10 +47,21 @@ _REPO_GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
+            actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
+                ActionDescriptor(name="delete"),
+                ActionDescriptor(name="release"),
+            ),
         ),
         ResourceDescriptor(
             kind="labels",
             fields=("name", "color", "description", "issueCount"),
+            actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
+                ActionDescriptor(name="delete"),
+            ),
         ),
     ),
 )
@@ -688,6 +699,8 @@ class GitHubProjectProvider:
         input_clean = input_val.strip().lstrip("@")
         if not input_clean:
             return ""
+        if input_clean.casefold() == "me":
+            return self.get_current_user().get("accountId", "")
 
         users = self.list_assignable_users(self.owner, max_results=100)
         for u in users:
@@ -982,6 +995,50 @@ class GitHubProvider:
         ).parsed_data
         return [_milestone_dict(milestone) for milestone in milestones]
 
+    def create_version(
+        self, project_key: str, name: str, description: str = "", release_date: str | None = None
+    ) -> dict:
+        """Create a repository milestone."""
+        if self._delegate:
+            raise ValueError("GitHub Project V2 contexts do not own milestones")
+        payload = {"title": name, "description": description or None}
+        if release_date:
+            payload["due_on"] = f"{release_date}T23:59:59Z"
+        milestone = self._github.rest.issues.create_milestone(
+            self._owner, self._repo_name, **payload
+        ).parsed_data
+        return _milestone_dict(milestone)
+
+    def update_version(self, project_key: str, name: str, **fields) -> dict:
+        """Update a repository milestone, including open/closed state."""
+        if self._delegate:
+            raise ValueError("GitHub Project V2 contexts do not own milestones")
+        number = _milestone_number(self._github, self._owner, self._repo_name, name)
+        if not number:
+            raise ValueError(f"Milestone '{name}' not found")
+        payload = {
+            "title": fields.get("name", name),
+            "description": fields.get("description"),
+            "state": "closed" if fields.get("released") else "open",
+        }
+        release_date = fields.get("release_date")
+        if release_date:
+            payload["due_on"] = f"{release_date}T23:59:59Z"
+        milestone = self._github.rest.issues.update_milestone(
+            self._owner, self._repo_name, int(number), **payload
+        ).parsed_data
+        return _milestone_dict(milestone)
+
+    def delete_version(self, project_key: str, name: str) -> bool:
+        """Delete a repository milestone by name."""
+        if self._delegate:
+            raise ValueError("GitHub Project V2 contexts do not own milestones")
+        number = _milestone_number(self._github, self._owner, self._repo_name, name)
+        if not number:
+            return False
+        self._github.rest.issues.delete_milestone(self._owner, self._repo_name, int(number))
+        return True
+
     def list_labels(self, project_key: str) -> list[dict]:
         """Return repository or board labels."""
         if self._delegate:
@@ -991,6 +1048,33 @@ class GitHubProvider:
             self._owner, self._repo_name, per_page=100
         ).parsed_data
         return [_label_dict(label, self._label_issue_count(label)) for label in labels]
+
+    def create_label(self, name: str, color: str, description: str = "") -> dict:
+        """Create a repository label."""
+        if self._delegate:
+            raise NotImplementedError("GitHub Project contexts do not own a label catalog")
+        label = self._github.rest.issues.create_label(
+            self._owner, self._repo_name, data={"name": name, "color": color, "description": description}
+        ).parsed_data
+        return _label_dict(label)
+
+    def update_label(self, name: str, new_name: str, color: str, description: str = "") -> dict:
+        """Update a repository label."""
+        if self._delegate:
+            raise NotImplementedError("GitHub Project contexts do not own a label catalog")
+        label = self._github.rest.issues.update_label(
+            self._owner,
+            self._repo_name,
+            name,
+            data={"new_name": new_name, "color": color, "description": description},
+        ).parsed_data
+        return _label_dict(label)
+
+    def delete_label(self, name: str) -> None:
+        """Delete a repository label."""
+        if self._delegate:
+            raise NotImplementedError("GitHub Project contexts do not own a label catalog")
+        self._github.rest.issues.delete_label(self._owner, self._repo_name, name)
 
     def _label_issue_count(self, label) -> int:
         """Return open+closed issue count for one label."""
@@ -1091,6 +1175,8 @@ class GitHubProvider:
         input_clean = input_val.strip().lstrip("@")
         if not input_clean:
             return ""
+        if input_clean.casefold() == "me":
+            return self.get_current_user().get("accountId", "")
         users = self.list_assignable_users(self.repository, max_results=100)
         for u in users:
             if u.get("accountId", "").casefold() == input_clean.casefold():

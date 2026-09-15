@@ -4,15 +4,19 @@ from jira_cli.client import JiraClient
 
 
 class FakeJira:
-    def search_issues(self, **kwargs):
+    def enhanced_search_issues(self, **kwargs):
         assert kwargs["fields"] == ["labels"]
-        return {
-            "issues": [
-                {"fields": {"labels": ["backend", "urgent"]}},
-                {"fields": {"labels": ["backend"]}},
-                {"fields": {"labels": []}},
-            ]
-        }
+        assert kwargs["maxResults"] is False
+
+        class Fields:
+            def __init__(self, labels):
+                self.labels = labels
+
+        class Issue:
+            def __init__(self, labels):
+                self.fields = Fields(labels)
+
+        return [Issue(["backend", "urgent"]), Issue(["backend"]), Issue([])]
 
 
 def test_list_labels_counts_raw_jira_label_payload() -> None:

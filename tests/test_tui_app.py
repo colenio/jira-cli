@@ -23,6 +23,7 @@ class FakeJiraClient:
         ]
         self.comment_calls: list[str] = []
         self.update_calls: list[tuple[str, dict]] = []
+        self.assignable_user_requests: list[int] = []
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         self.comment_calls.append(key)
@@ -42,6 +43,7 @@ class FakeJiraClient:
         return [u for u in self.assignable_users if normalized_query in normalize_for_match(u["displayName"])]
 
     def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
+        self.assignable_user_requests.append(max_results)
         return list(self.assignable_users)
 
     def search_users(self, query: str, max_results: int = 20) -> list[dict]:
@@ -346,6 +348,34 @@ def test_label_catalog_is_loaded_once(sample_issues):
     assert calls == 1
 
 
+def test_issue_actions_are_hidden_outside_issue_view(sample_issues):
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    app.active_kind = "labels"
+
+    assert app.check_action("focus_command", ()) is True
+    assert app.check_action("refresh", ()) is True
+    assert app.check_action("focus_find", ()) is False
+    assert app.check_action("open_issue", ()) is False
+    assert app.check_action("comment", ()) is False
+
+
+def test_label_management_actions_follow_provider_descriptor(sample_issues):
+    from jira_cli.providers import ActionDescriptor, ResourceDescriptor
+
+    client = FakeJiraClient()
+    client.describe = lambda: ProviderDescriptor(
+        name="fake",
+        resources=(ResourceDescriptor(kind="labels", actions=(ActionDescriptor(name="create"),)),),
+    )
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    app.active_kind = "labels"
+
+    assert app.check_action("create_resource", ()) is True
+    assert app.check_action("edit_resource", ()) is False
+    assert app.check_action("delete_resource", ()) is False
+
+
 async def test_mention_suggester_preserves_comment_prefix():
     from jira_cli.tui.features.comment.suggester import MentionSuggester
 
@@ -355,6 +385,7 @@ async def test_mention_suggester_preserves_comment_prefix():
     )
     assert await suggester.get_suggestion("Please review @li") == "Please review @LiBar82"
     assert await suggester.get_suggestion("Please review @jul") == "Please review @work-jdannenberg"
+    assert await suggester.get_suggestion("Please review @Julian D") == "Please review @work-jdannenberg"
     assert await suggester.get_suggestion("@mko") == "@mkoertgen"
     assert await suggester.get_suggestion("No mention here") is None
 
@@ -399,6 +430,46 @@ async def test_comment_editor_completes_mentions_with_tab(sample_issues):
         suggestion = app.screen.query_one("#mention_suggestion", Label)
         assert "Julian Dannenberg" in str(suggestion.render())
 
+        await pilot.press("tab")
+        assert editor.text == "Please review @work-jdannenberg"
+
+
+async def test_comment_mentions_load_all_users_once(sample_issues):
+    client = FakeJiraClient(assignable_users=["Andreas Bauer", "Tobias Braun"])
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    async with app.run_test() as pilot:
+        app.action_comment()
+        await pilot.pause()
+        await app.pop_screen()
+        app.action_comment()
+        await pilot.pause()
+
+    assert client.assignable_user_requests == [1000]
+
+
+async def test_comment_editor_completes_display_name_with_space(sample_issues):
+    from jira_cli.tui.features.issues.modals import CommentModal
+    from textual.widgets import Label, TextArea
+
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        app.push_screen(
+            CommentModal(
+                "A-1",
+                "No comments yet",
+                mention_users=[{"displayName": "Julian Dannenberg", "accountId": "work-jdannenberg"}],
+            )
+        )
+        await pilot.pause()
+        await pilot.press("tab")
+        editor = app.screen.query_one("#comment_editor", TextArea)
+        editor.load_text("Please review @Julian D")
+        editor.move_cursor((0, len(editor.text)))
+        editor.post_message(TextArea.Changed(editor))
+        await pilot.pause()
+
+        assert "Julian Dannenberg" in str(app.screen.query_one("#mention_suggestion", Label).render())
         await pilot.press("tab")
         assert editor.text == "Please review @work-jdannenberg"
 

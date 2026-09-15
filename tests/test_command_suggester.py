@@ -46,6 +46,12 @@ async def test_suggests_value_after_verb(suggester):
     assert await suggester.get_suggestion("type=st") == "type=Story"
 
 
+async def test_suggests_assignee_from_external_user_catalog(issues):
+    suggester = CommandSuggester(lambda: issues, lambda: ["Tobias Braun", "Andreas Bauer"])
+
+    assert await suggester.get_suggestion("assignee=Tob") == "assignee=Tobias Braun"
+
+
 async def test_suggests_priority_value(suggester):
     assert await suggester.get_suggestion("priority=h") == "priority=High"
 

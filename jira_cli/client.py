@@ -208,16 +208,14 @@ class JiraClient:
         if self.dry_run:
             return []
 
-        raw = self._jira.search_issues(
+        issues = self._jira.enhanced_search_issues(
             jql_str=f"project = {project_key}",
-            maxResults=100,
+            maxResults=False,
             fields=["labels"],
-            json_result=True,
-            use_post=True,
         )
         counts: dict[str, int] = {}
-        for issue in raw.get("issues", []):
-            for label in issue.get("fields", {}).get("labels", []) or []:
+        for issue in issues:
+            for label in getattr(issue.fields, "labels", []) or []:
                 counts[label] = counts.get(label, 0) + 1
         return [{"name": name, "issueCount": count} for name, count in sorted(counts.items())]
 
@@ -265,6 +263,20 @@ class JiraClient:
                 version.delete()
                 return True
         return False
+
+    def update_version(self, project_key: str, name: str, **fields) -> dict:
+        """Update a fix version by name, including release state."""
+        if self.dry_run:
+            return {"name": fields.get("name", name), **fields}
+
+        for version in self._jira.project_versions(project_key):
+            if version.name == name:
+                payload = {key: value for key, value in fields.items() if value is not None}
+                if "release_date" in payload:
+                    payload["releaseDate"] = payload.pop("release_date") or None
+                version.update(**payload)
+                return version.raw
+        raise ValueError(f"Version '{name}' not found in project {project_key}")
 
     def search_users(self, query: str, max_results: int = 20) -> list[dict]:
         """

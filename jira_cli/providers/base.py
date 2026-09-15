@@ -124,8 +124,32 @@ class IssueTrackerProvider(Protocol):
         """List milestones/versions for a project/repository context."""
         ...
 
+    def create_version(self, project_key: str, name: str, description: str = "", release_date: str | None = None) -> dict:
+        """Create a version or milestone."""
+        ...
+
+    def update_version(self, project_key: str, name: str, **fields) -> dict:
+        """Update a version or milestone by name."""
+        ...
+
+    def delete_version(self, project_key: str, name: str) -> bool:
+        """Delete a version or milestone by name."""
+        ...
+
     def list_labels(self, project_key: str) -> list[dict]:
         """List labels/tags for a project/repository context."""
+        ...
+
+    def create_label(self, name: str, color: str, description: str = "") -> dict:
+        """Create a label in the active provider context."""
+        ...
+
+    def update_label(self, name: str, new_name: str, color: str, description: str = "") -> dict:
+        """Update a label in the active provider context."""
+        ...
+
+    def delete_label(self, name: str) -> None:
+        """Delete a label from the active provider context."""
         ...
 
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
