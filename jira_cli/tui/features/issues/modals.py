@@ -4,9 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, Markdown, TextArea
-
-from jira_cli.tui.features.labels.suggester import LabelSuggester
+from textual.widgets import Button, Input, Label, Markdown, SelectionList, TextArea
 
 
 class CommentThreadMarkdown(Markdown):
@@ -63,6 +61,10 @@ class EditIssueModal(ModalScreen[dict | None]):
     #edit_issue_modal Input {
         margin: 1 0;
     }
+    #edit_labels {
+        height: 8;
+        border: solid $panel;
+    }
     #edit_issue_buttons {
         height: auto;
         align: right middle;
@@ -86,18 +88,15 @@ class EditIssueModal(ModalScreen[dict | None]):
         self.initial_description = description
         self.initial_labels = labels
         self.label_candidates = label_candidates or []
+        self.selected_labels = {label.strip() for label in labels.split(",") if label.strip()}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="edit_issue_modal"):
             yield Label(f"Edit {self.issue_key}", classes="modal-title")
             yield Input(value=self.initial_title, placeholder="Title", id="edit_title")
             yield TextArea(self.initial_description, placeholder="Description", id="edit_description")
-            yield Input(
-                value=self.initial_labels,
-                placeholder="Labels (comma-separated; Right completes)",
-                suggester=LabelSuggester(self.label_candidates),
-                id="edit_labels",
-            )
+            yield Input(placeholder="Filter labels", id="label_filter")
+            yield SelectionList(*self._label_options(), id="edit_labels")
             with Horizontal(id="edit_issue_buttons"):
                 yield Button("Cancel", id="edit_cancel")
                 yield Button("Save", variant="primary", id="edit_save")
@@ -111,9 +110,33 @@ class EditIssueModal(ModalScreen[dict | None]):
                 {
                     "summary": self.query_one("#edit_title", Input).value.strip(),
                     "description": self.query_one("#edit_description", TextArea).text,
-                    "labels": [label.strip() for label in self.query_one("#edit_labels", Input).value.split(",") if label.strip()],
+                    "labels": sorted(self.selected_labels),
                 }
             )
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Filter available labels without losing the current selection."""
+        if event.input.id != "label_filter":
+            return
+        label_list = self.query_one("#edit_labels", SelectionList)
+        label_list.set_options(self._label_options(event.value))
+
+    def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
+        if event.selection_list.id != "edit_labels":
+            return
+        visible = {option.value for option in event.selection_list.options}
+        self.selected_labels.difference_update(visible)
+        self.selected_labels.update(event.selection_list.selected)
+
+    def _label_options(self, query: str = "") -> list[tuple[str, str, bool]]:
+        """Return filtered label options with their current selected state."""
+        all_labels = list(dict.fromkeys([*self.label_candidates, *self.selected_labels]))
+        query_lower = query.strip().casefold()
+        return [
+            (label, label, label in self.selected_labels)
+            for label in sorted(all_labels, key=str.casefold)
+            if not query_lower or query_lower in label.casefold()
+        ]
 
     def on_key(self, event) -> None:
         if event.key == "escape":

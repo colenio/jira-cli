@@ -275,35 +275,57 @@ async def test_action_suggester_completion():
     assert await suggester.get_suggestion("In Progress | do") == "In Progress | Done"
 
 
-async def test_label_suggester_completes_last_comma_separated_token():
-    from jira_cli.tui.features.labels.suggester import LabelSuggester
-
-    suggester = LabelSuggester(["backend", "documentation", "frontend"])
-
-    assert await suggester.get_suggestion("doc") == "documentation"
-    assert await suggester.get_suggestion("backend, doc") == "backend, documentation"
-    assert await suggester.get_suggestion("backend, documentation") is None
-
-
-async def test_edit_modal_uses_right_for_label_completion_and_tab_for_focus(sample_issues):
+async def test_edit_modal_adds_and_removes_labels_with_multiselect(sample_issues):
     from jira_cli.tui.features.issues.modals import EditIssueModal
-    from textual.widgets import Button, Input
+    from textual.widgets import SelectionList
 
     app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
     async with app.run_test() as pilot:
-        app.push_screen(EditIssueModal("A-1", "Title", label_candidates=["documentation"]))
+        app.push_screen(
+            EditIssueModal(
+                "A-1",
+                "Title",
+                labels="backend, frontend",
+                label_candidates=["backend", "documentation", "frontend"],
+            )
+        )
         await pilot.pause()
-        labels = app.screen.query_one("#edit_labels", Input)
+        labels = app.screen.query_one("#edit_labels", SelectionList)
+        assert set(labels.selected) == {"backend", "frontend"}
+
         labels.focus()
-        labels.value = "doc"
-        labels.cursor_position = len(labels.value)
+        labels.highlighted = 0
+        await pilot.press("space")
+        labels.highlighted = 1
+        await pilot.press("space")
+
+        assert set(labels.selected) == {"documentation", "frontend"}
+
+
+async def test_edit_modal_filters_labels_and_keeps_tab_navigation(sample_issues):
+    from jira_cli.tui.features.issues.modals import EditIssueModal
+    from textual.widgets import Input, SelectionList
+
+    app = JiraApp(FakeJiraClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    async with app.run_test() as pilot:
+        app.push_screen(
+            EditIssueModal(
+                "A-1",
+                "Title",
+                labels="backend",
+                label_candidates=["backend", "documentation", "frontend"],
+            )
+        )
+        await pilot.pause()
+        label_filter = app.screen.query_one("#label_filter", Input)
+        label_filter.focus()
+        label_filter.value = "doc"
         await pilot.pause()
 
-        await pilot.press("right")
-        assert labels.value == "documentation"
-
+        labels = app.screen.query_one("#edit_labels", SelectionList)
+        assert [option.value for option in labels.options] == ["documentation"]
         await pilot.press("tab")
-        assert isinstance(app.screen.focused, Button)
+        assert app.screen.focused is labels
 
 
 def test_label_catalog_is_loaded_once(sample_issues):
