@@ -275,6 +275,34 @@ async def test_action_suggester_completion():
     assert await suggester.get_suggestion("In Progress | do") == "In Progress | Done"
 
 
+async def test_label_suggester_completes_last_comma_separated_token():
+    from jira_cli.tui.features.labels.suggester import LabelSuggester
+
+    suggester = LabelSuggester(["backend", "documentation", "frontend"])
+
+    assert await suggester.get_suggestion("doc") == "documentation"
+    assert await suggester.get_suggestion("backend, doc") == "backend, documentation"
+    assert await suggester.get_suggestion("backend, documentation") is None
+
+
+def test_label_catalog_is_loaded_once(sample_issues):
+    client = FakeJiraClient()
+    calls = 0
+    original = client.list_labels
+
+    def counted_list_labels(project_key: str):
+        nonlocal calls
+        calls += 1
+        return original(project_key)
+
+    client.list_labels = counted_list_labels
+    app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
+
+    assert app._label_names() == ["backend", "frontend"]
+    assert app._label_names() == ["backend", "frontend"]
+    assert calls == 1
+
+
 async def test_mention_suggester_preserves_comment_prefix():
     from jira_cli.tui.features.comment.suggester import MentionSuggester
 

@@ -129,6 +129,7 @@ class JiraApp(App):
         self.users: list[dict] = []
         self.versions: list[dict] = []
         self.labels: list[dict] = []
+        self._labels_loaded = False
         self.query_language = self.client.describe().query_language
         self.current_user_display_name = current_user_display_name
         self.query = JiraQuery(client)
@@ -680,6 +681,14 @@ class JiraApp(App):
     def _show_labels(self) -> None:
         """Show project/repository labels as the active label resource view."""
         self._replace_labels(list_project_labels(self.client, self.project_key), f"Source: labels in {self.project_key}")
+        self._labels_loaded = True
+
+    def _label_names(self) -> list[str]:
+        """Return the cached label catalog, loading it once on demand."""
+        if not self._labels_loaded:
+            self.labels = list_project_labels(self.client, self.project_key)
+            self._labels_loaded = True
+        return [str(label.get("name", "")) for label in self.labels if label.get("name")]
 
     def _replace_users(self, users: list[dict], source_label: str) -> None:
         """Replace user rows and switch to the users resource view."""
@@ -816,7 +825,13 @@ class JiraApp(App):
 
         self.pending_issue_key = issue.key
         self.push_screen(
-            EditIssueModal(issue.key, issue.summary, description=issue.description, labels=issue.labels),
+            EditIssueModal(
+                issue.key,
+                issue.summary,
+                description=issue.description,
+                labels=issue.labels,
+                label_candidates=self._label_names(),
+            ),
             lambda fields: self.run_worker(self._submit_edit_fields(fields), exclusive=True) if fields else None,
         )
 

@@ -6,6 +6,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Markdown, TextArea
 
+from jira_cli.tui.features.labels.suggester import LabelSuggester
+
 
 class CommentThreadMarkdown(Markdown):
     """Focusable, keyboard-scrollable Markdown comment thread."""
@@ -70,19 +72,32 @@ class EditIssueModal(ModalScreen[dict | None]):
     }
     """
 
-    def __init__(self, issue_key: str, title: str, description: str = "", labels: str = ""):
+    def __init__(
+        self,
+        issue_key: str,
+        title: str,
+        description: str = "",
+        labels: str = "",
+        label_candidates: list[str] | None = None,
+    ):
         super().__init__()
         self.issue_key = issue_key
         self.initial_title = title
         self.initial_description = description
         self.initial_labels = labels
+        self.label_candidates = label_candidates or []
 
     def compose(self) -> ComposeResult:
         with Vertical(id="edit_issue_modal"):
             yield Label(f"Edit {self.issue_key}", classes="modal-title")
             yield Input(value=self.initial_title, placeholder="Title", id="edit_title")
             yield TextArea(self.initial_description, placeholder="Description", id="edit_description")
-            yield Input(value=self.initial_labels, placeholder="Labels (comma-separated)", id="edit_labels")
+            yield Input(
+                value=self.initial_labels,
+                placeholder="Labels (comma-separated)",
+                suggester=LabelSuggester(self.label_candidates),
+                id="edit_labels",
+            )
             with Horizontal(id="edit_issue_buttons"):
                 yield Button("Cancel", id="edit_cancel")
                 yield Button("Save", variant="primary", id="edit_save")
