@@ -16,7 +16,7 @@ from jira_cli.tui.features.board import BoardWidget
 from jira_cli.tui.features.board.service import DEFAULT_STATUS_ORDER
 from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
-from jira_cli.tui.features.issues.modals import CommentModal, EditIssueModal
+from jira_cli.tui.features.issues.modals import CommentModal, EditIssueModal, IssueActionsModal
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
 from jira_cli.tui.features.labels.modals import LabelModal
 from jira_cli.tui.features.query.service import (
@@ -48,22 +48,16 @@ class JiraApp(App):
         Binding("p", "reset_source", "Project", show=True),
         Binding("slash", "focus_filter", "Filter", show=True),
         Binding("f", "focus_find", "Find", show=True),
-        Binding("j", "focus_jql", "Query", show=True),
         Binding("colon", "focus_command", "Command", show=True),
         Binding("n", "create_resource", "New", show=True),
         Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("b", "toggle_board", "Board", show=True),
-        Binding("v", "open_issue", "Open in Browser", show=True),
+        Binding("v", "open_issue", "View in Web", show=True),
         Binding("o", "open_issue", "Open in Browser", show=False),
-        Binding("t", "transition", "Transition", show=True),
-        Binding("a", "assign", "Assign", show=True),
-        Binding("e", "edit_resource", "Edit", show=True),
         Binding("insert", "create_resource", "New", show=False),
         Binding("delete", "delete_resource", "Delete", show=True),
         Binding("i", "issues_for_resource", "Issues", show=True),
-        Binding("c", "comment", "Comment", show=True),
-        Binding("u", "drill_up", "Parent", show=True),
-        Binding("d", "drill_down", "Children", show=True),
+        Binding("x", "issue_actions", "Actions", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("question_mark", "help", "Help", show=True),
         Binding("escape", "clear_filter", "Clear Filter", show=False),
@@ -330,8 +324,8 @@ class JiraApp(App):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Expose only actions that make sense for the active resource and provider."""
         issue_actions = {
-            "focus_find", "focus_jql", "toggle_board", "open_issue", "transition", "assign",
-            "comment", "drill_up", "drill_down",
+            "focus_find", "toggle_board", "open_issue", "issue_actions",
+            "transition", "assign", "comment", "drill_up", "drill_down",
         }
         if action in issue_actions:
             return self.active_kind == "issues"
@@ -362,7 +356,7 @@ class JiraApp(App):
         verbs = ["users", "labels", "versions", "clear"]
         if self.active_kind == "issues":
             verbs.extend([
-                "table", "board", "view", "create", "edit", "order=",
+                "table", "board", "view", "actions", "create", "order=",
                 *(f"{verb}=" for verb in QUICK_FILTER_DIMENSIONS),
             ])
         elif self.active_kind == "users":
@@ -685,7 +679,7 @@ class JiraApp(App):
         mode_label.update("MODE: COMMAND (INPUT)")
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = self.command_suggester
-        self._show_query_input("views | filters | resources | create/edit | clear")
+        self._show_query_input("table/board/users/labels/versions | actions/create/edit/related | status= | assignee= | label= | clear")
 
     async def _submit_command(self, expression: str) -> None:
         """Parse and apply a ':' command: view switch, quick filter, or clear."""
@@ -699,6 +693,9 @@ class JiraApp(App):
             return
         if verb in ("v", "view", "open"):
             self.action_open_issue()
+            return
+        if verb in ("actions", "action", "x"):
+            self.action_issue_actions()
             return
         if verb == "create":
             if not self.check_action("create_resource", ()):
@@ -1398,6 +1395,27 @@ class JiraApp(App):
         else:
             self.notify("No issue selected", severity="warning")
 
+    def action_issue_actions(self) -> None:
+        """Open the bundled action chooser for the selected issue."""
+        if self.active_kind != "issues" or not self._selected_issue():
+            self.notify("No issue selected", severity="warning")
+            return
+        self.push_screen(IssueActionsModal(), self._handle_issue_action)
+
+    def _handle_issue_action(self, action: str | None) -> None:
+        if action == "transition":
+            self.action_transition()
+        elif action == "assign":
+            self.action_assign()
+        elif action == "edit":
+            self.action_edit_resource()
+        elif action == "comment":
+            self.action_comment()
+        elif action == "parent":
+            self.run_worker(self.action_drill_up(), exclusive=True)
+        elif action == "children":
+            self.run_worker(self.action_drill_down(), exclusive=True)
+
     def action_help(self) -> None:
         """Show help information."""
         help_text = (
@@ -1406,16 +1424,11 @@ class JiraApp(App):
             "[cyan]p[/cyan]        Reset source to project\n"
             "[cyan]/[/cyan]        Focus live filter\n"
             "[cyan]f[/cyan]        Find by text (summary/description)\n"
-            f"[cyan]j[/cyan]        Run {self.query_language} query\n"
-            "[cyan]:[/cyan]        Command bar: issues/table/board/view|next|users/user=<q>/labels/versions|type/status/assignee/label/priority=<value>|order=<field>|overdue[=me]|clear\n"
+            "[cyan]:[/cyan]        Command bar: table/board/view/actions|users/user=<q>/labels/versions|create/edit/related|type/status/assignee/label/priority=<value>|order=<field>|clear\n"
             "[cyan]b[/cyan]        Toggle board view (grouped by status)\n"
-            "[cyan]v / o[/cyan]    Open selected issue in browser\n"
+            "[cyan]v / o[/cyan]    View selected issue in web browser\n"
+            "[cyan]x[/cyan]        Issue actions\n"
             "[cyan]Enter[/cyan]    Execute active query input\n"
-            "[cyan]t[/cyan]        Transition selected issue\n"
-            "[cyan]a[/cyan]        Assign selected issue\n"
-            "[cyan]c[/cyan]        Add comment (plain/md/adf)\n"
-            "[cyan]u[/cyan]        Drill up to parent issue\n"
-            "[cyan]d[/cyan]        Drill down to child issues\n"
             "[cyan]Esc[/cyan]      Close input or reset source\n"
             "[cyan]r[/cyan]        Refresh issues\n"
             "[cyan]q[/cyan]        Quit\n"
