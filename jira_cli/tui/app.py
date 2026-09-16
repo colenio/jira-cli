@@ -359,20 +359,21 @@ class JiraApp(App):
 
     def _command_verbs(self) -> list[str]:
         """Return command-palette verbs available in the current resource context."""
-        verbs = ["issues", "users", "labels", "versions", "milestones", "clear"]
+        verbs = ["users", "labels", "versions", "clear"]
         if self.active_kind == "issues":
             verbs.extend([
-                "table", "board", "view", "open", "next", "me", "overdue", "overdue=me", "order=",
+                "table", "board", "view", "create", "edit", "order=",
                 *(f"{verb}=" for verb in QUICK_FILTER_DIMENSIONS),
             ])
         elif self.active_kind == "users":
             verbs.append("user=")
+        elif self.active_kind in {"labels", "versions"}:
+            verbs.extend(["edit", "related"])
         for action in ("create", "edit", "delete"):
             action_name = f"{action}_resource" if action != "edit" else "edit_resource"
             if self.check_action(action_name, ()):
-                verbs.append(action)
-        if self.check_action("issues_for_resource", ()) and self.active_kind != "issues":
-            verbs.append("related")
+                if action not in verbs:
+                    verbs.append(action)
         return verbs
 
     def _restore_active_focus(self, preferred_key: str | None = None) -> None:
@@ -684,7 +685,7 @@ class JiraApp(App):
         mode_label.update("MODE: COMMAND (INPUT)")
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = self.command_suggester
-        self._show_query_input(" | ".join(self._command_verbs()))
+        self._show_query_input("views | filters | resources | create/edit | clear")
 
     async def _submit_command(self, expression: str) -> None:
         """Parse and apply a ':' command: view switch, quick filter, or clear."""
