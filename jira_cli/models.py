@@ -29,6 +29,7 @@ class JiraIssueField(BaseModel):
     assignee: Optional[dict] = None
     reporter: Optional[dict] = None
     issuetype: Optional[dict | str] = None
+    fix_versions: list[dict] = Field(default_factory=list, alias="fixVersions")
     parent: Optional[dict] = None
     subtasks: list[dict] = []
     labels: list[str] = []
@@ -77,6 +78,7 @@ class IssueRow(BaseModel):
     updated: str = ""
     description: str = ""
     labels: str = ""
+    versions: str = ""
     parent_key: str = ""
     child_keys: list[str] = Field(default_factory=list)
 
@@ -122,6 +124,9 @@ class IssueRow(BaseModel):
             )
 
         labels = ", ".join(fields.labels) if fields.labels else ""
+        versions = ", ".join(
+            str(version.get("name", "")) for version in fields.fix_versions if version.get("name")
+        )
         issue_type = ""
         if isinstance(fields.issuetype, dict):
             issue_type = fields.issuetype.get("name", "")
@@ -147,6 +152,7 @@ class IssueRow(BaseModel):
             updated=fields.updated or "",
             description=fields.description or "",
             labels=labels,
+            versions=versions,
             parent_key=parent_key,
             child_keys=child_keys,
         )

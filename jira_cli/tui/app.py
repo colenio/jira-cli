@@ -5,6 +5,7 @@ from typing import Literal
 
 from rich.markup import escape
 from textual.app import ComposeResult, App
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Label, DataTable, Footer, Input, ListView
 from textual.binding import Binding
 
@@ -73,6 +74,20 @@ class JiraApp(App):
     }
 
     #issue_board {
+        height: 1fr;
+    }
+
+    #issue_workspace {
+        height: 1fr;
+    }
+
+    #issue_master {
+        width: 2fr;
+        height: 1fr;
+    }
+
+    #issue_workspace > #issue_detail {
+        width: 1fr;
         height: 1fr;
     }
 
@@ -209,12 +224,14 @@ class JiraApp(App):
         yield Label(f"Source: project={self.project_key}", id="query_context")
         yield Input(placeholder="Find text in summary/description and press Enter", id="query_input")
         yield Input(placeholder="Filter issues (key/summary/status/assignee). Press Esc to clear", id="filter_input")
-        yield IssueTableWidget(self.issues, id="issue_table")
-        yield BoardWidget(self.issues, status_order=self._status_order(), id="issue_board")
+        with Horizontal(id="issue_workspace"):
+            with Vertical(id="issue_master"):
+                yield IssueTableWidget(self.issues, id="issue_table")
+                yield BoardWidget(self.issues, status_order=self._status_order(), id="issue_board")
+            yield IssueDetailWidget(id="issue_detail")
         yield UserTableWidget(self.users, id="user_table")
         yield VersionTableWidget(self.versions, id="version_table")
         yield LabelTableWidget(self.labels, id="label_table")
-        yield IssueDetailWidget(id="issue_detail")
         yield UserDetailWidget(id="user_detail")
         yield VersionDetailWidget(id="version_detail")
         yield LabelDetailWidget(id="label_detail")

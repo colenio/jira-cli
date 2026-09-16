@@ -158,6 +158,50 @@ class EditIssueModal(ModalScreen[dict | None]):
             event.stop()
 
 
+class IssueActionsModal(ModalScreen[str | None]):
+    """Choose an action for the currently selected issue."""
+
+    DEFAULT_CSS = """
+    IssueActionsModal { align: center middle; }
+    #issue_actions_modal {
+        width: 52;
+        height: auto;
+        padding: 1 2;
+        border: round $accent;
+        background: $surface;
+    }
+    #issue_actions_modal Button { margin: 1 0; width: 1fr; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="issue_actions_modal"):
+            yield Label("Issue actions", classes="modal-title")
+            yield Button("Transition", id="action_transition")
+            yield Button("Assign", id="action_assign")
+            yield Button("Edit", id="action_edit")
+            yield Button("Comment", id="action_comment")
+            yield Button("Parent", id="action_parent")
+            yield Button("Children", id="action_children")
+            yield Button("Cancel", id="action_cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        actions = {
+            "action_transition": "transition",
+            "action_assign": "assign",
+            "action_edit": "edit",
+            "action_comment": "comment",
+            "action_parent": "parent",
+            "action_children": "children",
+        }
+        self.dismiss(actions.get(event.button.id))
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+            event.prevent_default()
+            event.stop()
+
+
 class CommentModal(ModalScreen[str | None]):
     """Read the current thread and compose a multiline comment."""
 

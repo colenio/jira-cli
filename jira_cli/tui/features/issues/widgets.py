@@ -14,7 +14,7 @@ class IssueTableWidget(DataTable):
 
     def on_mount(self) -> None:
         """Configure the table on mount."""
-        self.add_columns("Type", "Key", "Summary", "Status", "Assignee", "Priority")
+        self.add_columns("Type", "Key", "Summary", "Status", "Assignee", "Priority", "Labels", "Versions")
         self.cursor_type = "row"
 
         for issue in self.issues:
@@ -25,6 +25,8 @@ class IssueTableWidget(DataTable):
                 issue.status or "—",
                 issue.assignee or "—",
                 issue.priority or "—",
+                issue.labels or "—",
+                issue.versions or "—",
                 key=issue.key,
             )
 
@@ -47,6 +49,8 @@ class IssueTableWidget(DataTable):
                 issue.status or "—",
                 issue.assignee or "—",
                 issue.priority or "—",
+                issue.labels or "—",
+                issue.versions or "—",
                 key=issue.key,
             )
 

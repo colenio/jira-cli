@@ -122,6 +122,7 @@ class JiraQuery:
                 "updated",
                 "description",
                 "labels",
+                "fixVersions",
             ]
 
         result = self.client.search(jql, fields=fields, max_results=max_results)

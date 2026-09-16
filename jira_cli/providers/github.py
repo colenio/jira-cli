@@ -342,6 +342,7 @@ class GitHubProjectProvider:
                       repository { nameWithOwner }
                       assignees(first: 10) { nodes { login name } }
                       labels(first: 10) { nodes { name } }
+                      milestone { title }
                     }
                     ... on PullRequest {
                       id
@@ -354,6 +355,7 @@ class GitHubProjectProvider:
                       repository { nameWithOwner }
                       assignees(first: 10) { nodes { login name } }
                       labels(first: 10) { nodes { name } }
+                      milestone { title }
                     }
                     ... on DraftIssue {
                       id
@@ -400,6 +402,7 @@ class GitHubProjectProvider:
                       repository { nameWithOwner }
                       assignees(first: 10) { nodes { login name } }
                       labels(first: 10) { nodes { name } }
+                      milestone { title }
                     }
                     ... on PullRequest {
                       id
@@ -412,6 +415,7 @@ class GitHubProjectProvider:
                       repository { nameWithOwner }
                       assignees(first: 10) { nodes { login name } }
                       labels(first: 10) { nodes { name } }
+                      milestone { title }
                     }
                     ... on DraftIssue {
                       id
@@ -520,6 +524,8 @@ class GitHubProjectProvider:
 
         labels_nodes = content.get("labels", {}).get("nodes", []) if isinstance(content, dict) else []
         labels_list = [l["name"] for l in labels_nodes if isinstance(l, dict) and "name" in l]
+        milestone = content.get("milestone") or {}
+        versions = [{"name": milestone["title"]}] if isinstance(milestone, dict) and milestone.get("title") else []
 
         issuetype_name = "Story" if item_type == "ISSUE" else ("PullRequest" if item_type == "PULL_REQUEST" else "Draft")
 
@@ -529,6 +535,7 @@ class GitHubProjectProvider:
             assignee=assignee_dict,
             reporter=reporter_dict,
             issuetype={"name": issuetype_name},
+            fixVersions=versions,
             labels=labels_list,
             description=content.get("body", "") if isinstance(content, dict) else "",
             updated=node.get("updatedAt"),
