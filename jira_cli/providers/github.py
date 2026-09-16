@@ -205,6 +205,37 @@ class GitHubProjectProvider:
                 return url
         return self.base_url
 
+    def find_children(self, key: str, max_results: int = 50) -> list:
+        """Load GitHub sub-issues for a Project V2 item through its repository."""
+        from jira_cli.models import IssueRow
+
+        cached = self._item_cache.get(key)
+        if not cached:
+            self.search("")
+            cached = self._item_cache.get(key)
+        content = (cached or {}).get("content") or {}
+        repository = content.get("repository") or {}
+        number = content.get("number")
+        name_with_owner = repository.get("nameWithOwner", "")
+        if not number or "/" not in name_with_owner:
+            return []
+        owner, repo = name_with_owner.split("/", 1)
+        response = self._github.request(
+            "GET",
+            f"/repos/{owner}/{repo}/issues/{number}/sub_issues",
+            params={"per_page": min(max_results, 100)},
+        )
+        return [
+            IssueRow.from_jira_issue(
+                _github_rest_issue_to_jira_issue(
+                    item,
+                    parent_key=key,
+                    issue_key=f"{repo}#{item.get('number')}",
+                )
+            )
+            for item in response.json()
+        ]
+
     def describe(self) -> ProviderDescriptor:
         """Describe GitHub Project V2 resources, filters, and actions."""
         status_names = tuple(self._status_options.keys()) if self._status_options else ("Todo", "In Progress", "Done")
@@ -954,6 +985,23 @@ class GitHubProvider:
         number = key.lstrip("#")
         return f"{self.base_url.rstrip('/')}/issues/{number}"
 
+    def find_children(self, key: str, max_results: int = 50) -> list:
+        """Load GitHub sub-issues for a repository issue."""
+        if self._delegate:
+            return self._delegate.find_children(key, max_results=max_results)
+        from jira_cli.models import IssueRow
+
+        number = _issue_number(key)
+        response = self._github.request(
+            "GET",
+            f"/repos/{self._owner}/{self._repo_name}/issues/{number}/sub_issues",
+            params={"per_page": min(max_results, 100)},
+        )
+        return [
+            IssueRow.from_jira_issue(_github_rest_issue_to_jira_issue(item, parent_key=key))
+            for item in response.json()
+        ]
+
     def search(
         self,
         jql: str,
@@ -1314,6 +1362,33 @@ class GitHubProvider:
         return users[0].get("accountId", "") if users else value
 
 
+def _github_rest_issue_to_jira_issue(
+    issue: dict[str, Any], parent_key: str = "", issue_key: str | None = None
+) -> JiraIssue:
+    """Convert a GitHub REST issue payload, including sub-issue metadata."""
+    labels = [label.get("name", "") for label in issue.get("labels", []) if isinstance(label, dict)]
+    assignees = issue.get("assignees") or []
+    assignee = _github_user_dict(assignees[0]) if assignees else None
+    reporter = _github_user_dict(issue.get("user")) if issue.get("user") else None
+    issue_type = _label_value(labels, "type") or "Issue"
+    priority = _label_value(labels, "priority") or ""
+    return JiraIssue(
+        key=issue_key or f"#{issue.get('number')}",
+        fields=JiraIssueField(
+            summary=issue.get("title", "Untitled"),
+            issuetype={"name": issue_type},
+            status={"name": issue.get("state", "")},
+            priority={"name": priority},
+            assignee=assignee,
+            reporter=reporter,
+            labels=labels,
+            description=issue.get("body") or "",
+            updated=issue.get("updated_at"),
+            parent={"key": parent_key} if parent_key else None,
+        ),
+    )
+
+
 def _parse_query(query: str) -> tuple[dict[str, str], str, str]:
     query_part, _, order_part = query.partition(" ORDER BY ")
     filters: dict[str, str] = {}
@@ -1397,6 +1472,13 @@ def _milestone_number(client: GitHub, owner: str, repo: str, title: str | None) 
 
 
 def _github_user_dict(user) -> dict:
+    if isinstance(user, dict):
+        return {
+            "accountId": user.get("login", ""),
+            "displayName": user.get("name") or user.get("login", ""),
+            "emailAddress": user.get("email") or "-",
+            "active": True,
+        }
     name = getattr(user, "name", None) or getattr(user, "login", "")
     login = getattr(user, "login", "")
     return {"accountId": login, "displayName": name, "emailAddress": getattr(user, "email", None) or "-", "active": True}

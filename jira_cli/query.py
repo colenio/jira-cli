@@ -196,6 +196,8 @@ class JiraQuery:
         Returns:
             List of IssueRow
         """
+        if hasattr(self.client, "find_children"):
+            return self.client.find_children(key, max_results=max_results)
         return self.search_custom_jql(self.children_jql(key), fields=fields, max_results=max_results)
 
     @staticmethod

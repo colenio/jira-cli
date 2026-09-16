@@ -134,8 +134,16 @@ class JiraCommentFeature:
         """Return cached comment text without triggering a REST call."""
         with self._lock:
             if issue_key not in self._issue_comments:
-                return "[dim]Loading comments...[/dim]", "..."
+                return "Loading comments...", "..."
         return self.current_view(issue_key)
+
+    def cached_thread_view(self, issue_key: str) -> tuple[str, str]:
+        """Return all cached comments without triggering a blocking fetch."""
+        with self._lock:
+            if issue_key not in self._issue_comments:
+                return "Loading comments...", "..."
+            comments = self._issue_comments[issue_key]
+        return self.thread_view(issue_key), f"{len(comments)}/{len(comments)}"
 
     def invalidate_issue(self, issue_key: str) -> None:
         """Drop cached comments and index for one issue."""

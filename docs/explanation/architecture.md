@@ -87,6 +87,10 @@ Jira Cloud uses Atlassian Document Format (ADF). The project uses the pinned `md
 
 GitHub comments and descriptions remain Markdown. Conversion is therefore a Jira adapter concern, not a shared domain-model concern.
 
+The product is intentionally **Markdown-first** at the user-facing content boundary. GitHub and the planned GitLab provider can keep Markdown natively; Jira converts at the adapter boundary through ADF. This keeps the TUI and canonical models independent of Jira's document format.
+
+Markdown links are also a planned navigation boundary. External links should open in the browser; links belonging to the active Jira or GitHub context should be recognized as issue references and navigate inside the TUI when possible.
+
 ### TUI architecture
 
 The Textual application owns high-level state and navigation. Feature packages own focused behavior:
@@ -100,16 +104,20 @@ The Textual application owns high-level state and navigation. Feature packages o
 
 Blocking provider operations such as assignment and transitions run in Textual workers so network latency does not freeze the event loop.
 
-## Diátaxis Documentation Map
+Issue actions are intentionally context-local. The current direction is to keep a compact, visible action entry point near the active issue while retaining keyboard bindings that work independently of widget focus. A large global action palette should not duplicate every action.
 
-The documentation is organized by purpose:
+Batch actions are a separate design problem. Multi-selection in the issue table could support bulk assignment and bulk transitions, but should be designed after single-issue actions and confirmation behavior are stable.
 
-- **Tutorials:** guided first-use material for new users.
-- **How-to guides:** focused procedures for configuration, workflows, and releases.
-- **Reference:** command options, provider capabilities, and API details.
-- **Explanation:** architecture, provider choices, design trade-offs, and migration assessments.
+Parent/child navigation is another separate workflow. The current model exposes parent and child keys where providers supply them. Child creation is planned as a distinct workflow from ordinary issue creation: use the selected issue as parent, create the child with the provider-specific type, then link it. Jira uses hierarchy-specific issue types (Epic -> Story, Story -> Sub-task); GitHub creates an issue and then calls the REST Sub-Issues add operation. The workflow should preserve the active query/context and selection.
 
-This page is an explanation document. It describes why the system is structured this way, not a step-by-step setup procedure.
+## Deferred UX Topics
+
+These topics are intentionally documented before implementation:
+
+- Provider-aware internal Markdown links that navigate to Jira/GitHub issues inside the TUI.
+- A final design for issue-context actions versus an action modal or compact context bar.
+- Multi-selection and confirmation semantics for batch assignment and batch transitions.
+- Robust parent/child drill-up, drill-down, and child creation across Jira, GitHub sub-issues, and GitLab relationships.
 
 ## Rust and Ratatui Assessment
 

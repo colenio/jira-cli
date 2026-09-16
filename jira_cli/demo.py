@@ -19,6 +19,9 @@ _DEMO_ISSUES = [
         "assignee": "Ada Lovelace",
         "updated": "2026-09-10T09:30:00.000+0000",
         "labels": ["automation", "security"],
+        "description": "Coordinate the dependency update rollout. See [the release checklist](https://example.invalid/checklist).",
+        "reporter": "Marcel Körtgen",
+        "subtasks": ["DEMO-6", "DEMO-7"],
     },
     {
         "key": "DEMO-2",
@@ -29,6 +32,8 @@ _DEMO_ISSUES = [
         "assignee": "Grace Hopper",
         "updated": "2026-09-10T11:15:00.000+0000",
         "labels": ["docs"],
+        "description": "Document token handling and the supported environment variables.",
+        "reporter": "Ada Lovelace",
     },
     {
         "key": "DEMO-3",
@@ -39,6 +44,8 @@ _DEMO_ISSUES = [
         "assignee": "Marcel Körtgen",
         "updated": "2026-09-11T08:05:00.000+0000",
         "labels": ["tui", "quality"],
+        "description": "Selection must survive refresh and keep the detail pane in sync.",
+        "reporter": "Grace Hopper",
     },
     {
         "key": "DEMO-4",
@@ -49,6 +56,8 @@ _DEMO_ISSUES = [
         "assignee": "Katherine Johnson",
         "updated": "2026-09-11T13:40:00.000+0000",
         "labels": ["release"],
+        "description": "Collect the user-facing changes for the next demo release.",
+        "reporter": "Marcel Körtgen",
     },
     {
         "key": "DEMO-5",
@@ -59,6 +68,32 @@ _DEMO_ISSUES = [
         "assignee": "Grace Hopper",
         "updated": "2026-09-11T16:20:00.000+0000",
         "labels": ["docs", "automation"],
+        "description": "Publish the generated API reference after the build succeeds.",
+        "reporter": "Katherine Johnson",
+    },
+    {
+        "key": "DEMO-6",
+        "summary": "Add dependency update acceptance checks",
+        "issuetype": "Sub-task",
+        "status": "To Do",
+        "priority": "Medium",
+        "assignee": "Ada Lovelace",
+        "updated": "2026-09-10T10:00:00.000+0000",
+        "labels": ["automation"],
+        "parent": "DEMO-1",
+        "reporter": "Marcel Körtgen",
+    },
+    {
+        "key": "DEMO-7",
+        "summary": "Add dependency update rollback notes",
+        "issuetype": "Sub-task",
+        "status": "Backlog",
+        "priority": "Low",
+        "assignee": "Grace Hopper",
+        "updated": "2026-09-10T10:30:00.000+0000",
+        "labels": ["security"],
+        "parent": "DEMO-1",
+        "reporter": "Marcel Körtgen",
     },
 ]
 
@@ -134,29 +169,113 @@ class DemoJiraClient:
                 counts[label] = counts.get(label, 0) + 1
         return [{"name": name, "issueCount": count} for name, count in sorted(counts.items())]
 
+    def create_version(self, project_key: str, name: str, description: str = "", release_date: str | None = None) -> dict:
+        version = {
+            "id": f"demo-{normalize_for_match(name).replace(' ', '-')}",
+            "name": name,
+            "description": description,
+            "releaseDate": release_date,
+            "released": False,
+            "archived": False,
+        }
+        _DEMO_VERSIONS.append(version)
+        return version
+
+    def update_version(self, project_key: str, name: str, **fields) -> dict:
+        version = next(version for version in _DEMO_VERSIONS if version["name"] == name)
+        version.update(fields)
+        return version
+
+    def delete_version(self, project_key: str, name: str) -> bool:
+        before = len(_DEMO_VERSIONS)
+        _DEMO_VERSIONS[:] = [version for version in _DEMO_VERSIONS if version["name"] != name]
+        return len(_DEMO_VERSIONS) < before
+
+    def create_label(self, project_key: str, name: str, color: str, description: str = "") -> dict:
+        return {"name": name, "color": color, "description": description, "issueCount": 0}
+
+    def update_label(self, project_key: str, name: str, new_name: str, color: str, description: str = "") -> dict:
+        return {"name": new_name, "color": color, "description": description, "issueCount": 0}
+
+    def delete_label(self, project_key: str, name: str) -> None:
+        return None
+
     def get_issue_comments(self, key: str, expand_changelog: bool = False) -> list[dict]:
         """Return synthetic comments for one issue."""
         return list(_DEMO_COMMENTS.get(key, []))
+
+    def find_children(self, key: str, max_results: int = 50) -> list[IssueRow]:
+        """Return synthetic issues whose parent matches the requested key."""
+        return [
+            IssueRow.from_jira_issue(_to_jira_issue(issue))
+            for issue in _DEMO_ISSUES
+            if issue.get("parent") == key
+        ][:max_results]
 
     def add_comment(self, key: str, body: str | dict, use_adf: bool = False) -> dict:
         """Pretend to add a comment in demo mode."""
         return {"id": "demo-comment", "body": body}
 
+    def create_issue(
+        self,
+        project_key: str,
+        title: str,
+        body: str | dict | None = None,
+        issue_type: str = "Task",
+        labels: list[str] | None = None,
+        assignee: str | None = None,
+        priority: str | None = None,
+        parent: str | None = None,
+        repository: str | None = None,
+    ) -> dict:
+        """Create an in-memory synthetic issue for demo interactions."""
+        number = max(int(issue["key"].split("-")[-1]) for issue in _DEMO_ISSUES) + 1
+        issue = {
+            "key": f"{DEMO_PROJECT_KEY}-{number}",
+            "summary": title,
+            "issuetype": issue_type,
+            "status": "To Do",
+            "priority": priority or "Medium",
+            "assignee": assignee or "",
+            "updated": "2026-09-16T09:00:00.000+0000",
+            "labels": labels or [],
+            "description": body if isinstance(body, str) else "",
+            "parent": parent,
+            "reporter": "Marcel Körtgen",
+        }
+        _DEMO_ISSUES.append(issue)
+        return {"key": issue["key"], "id": issue["key"]}
+
     def update_issue(self, key: str, fields: dict) -> None:
         """Pretend to update an issue in demo mode."""
-        return None
+        issue = next((issue for issue in _DEMO_ISSUES if issue["key"] == key), None)
+        if issue:
+            issue.update(
+                {
+                    "summary": fields.get("summary", issue["summary"]),
+                    "description": fields.get("description", issue.get("description", "")),
+                    "labels": fields.get("labels", issue["labels"]),
+                    "priority": fields.get("priority", issue["priority"]),
+                }
+            )
 
     def get_transitions(self, key: str) -> list[dict]:
         """Return synthetic workflow transitions."""
         return [{"id": "demo-done", "name": "Done"}, {"id": "demo-progress", "name": "In Progress"}]
 
-    def transition_issue(self, key: str, transition_id: str) -> None:
+    def transition_issue(self, key: str, transition_id: str, comment: str | None = None) -> None:
         """Pretend to transition an issue in demo mode."""
-        return None
+        status = {"demo-done": "Done", "demo-progress": "In Progress"}.get(transition_id)
+        issue = next((issue for issue in _DEMO_ISSUES if issue["key"] == key), None)
+        if issue and status:
+            issue["status"] = status
 
     def assign_issue(self, key: str, account_id: str) -> None:
         """Pretend to assign an issue in demo mode."""
-        return None
+        user = next((user for user in _DEMO_USERS if user["accountId"] == account_id), None)
+        issue = next((issue for issue in _DEMO_ISSUES if issue["key"] == key), None)
+        if issue and user:
+            issue["assignee"] = user["displayName"]
 
 
 def _to_jira_issue(issue: dict) -> JiraIssue:
@@ -171,6 +290,14 @@ def _to_jira_issue(issue: dict) -> JiraIssue:
             assignee=assignee,
             updated=issue["updated"],
             labels=issue["labels"],
+            description=issue.get("description"),
+            reporter=(
+                {"displayName": issue["reporter"]}
+                if issue.get("reporter")
+                else None
+            ),
+            parent={"key": issue["parent"]} if issue.get("parent") else None,
+            subtasks=[{"key": key} for key in issue.get("subtasks", [])],
         ),
     )
 
@@ -204,6 +331,8 @@ def _matches(issue: dict, conditions: list[str]) -> bool:
         if field == "priority" and issue["priority"] != value:
             return False
         if field == "labels" and value not in issue["labels"]:
+            return False
+        if field == "parent" and issue.get("parent") != value:
             return False
     return True
 

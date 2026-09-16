@@ -68,6 +68,13 @@ class JiraProvider(JiraClient):
         """Describe Jira-native resources and capabilities."""
         return JIRA_PROVIDER_DESCRIPTOR
 
+    def find_children(self, key: str, max_results: int = 50) -> list:
+        """Find Epic or sub-task children through Jira's parent field."""
+        from jira_cli.models import IssueRow
+
+        result = self.search(f"parent = {key} ORDER BY key", max_results=max_results)
+        return [IssueRow.from_jira_issue(issue) for issue in result.issues]
+
     def update_label(
         self, project_key: str, name: str, new_name: str, color: str, description: str = ""
     ) -> dict:

@@ -1,6 +1,8 @@
 """Issue table/detail widgets used by the Jira TUI app."""
 
-from textual.widgets import DataTable, Static
+from textual.app import ComposeResult
+from textual.containers import VerticalScroll
+from textual.widgets import DataTable, Markdown
 
 from jira_cli.models import IssueRow
 
@@ -14,7 +16,7 @@ class IssueTableWidget(DataTable):
 
     def on_mount(self) -> None:
         """Configure the table on mount."""
-        self.add_columns("Type", "Key", "Summary", "Status", "Assignee", "Priority", "Labels", "Versions")
+        self.add_columns("Type", "Key", "Summary", "Status", "Assignee", "Priority")
         self.cursor_type = "row"
 
         for issue in self.issues:
@@ -25,8 +27,6 @@ class IssueTableWidget(DataTable):
                 issue.status or "—",
                 issue.assignee or "—",
                 issue.priority or "—",
-                issue.labels or "—",
-                issue.versions or "—",
                 key=issue.key,
             )
 
@@ -49,8 +49,6 @@ class IssueTableWidget(DataTable):
                 issue.status or "—",
                 issue.assignee or "—",
                 issue.priority or "—",
-                issue.labels or "—",
-                issue.versions or "—",
                 key=issue.key,
             )
 
@@ -73,15 +71,18 @@ class IssueTableWidget(DataTable):
         return rows[selected_index]
 
 
-class IssueDetailWidget(Static):
+class IssueDetailWidget(VerticalScroll):
     """Display details of the selected issue."""
 
     DEFAULT_CSS = """
     IssueDetailWidget {
         border: solid $accent;
-        height: 12;
+        height: 1fr;
         overflow-y: auto;
         color: $text;
+    }
+    #issue_detail_body {
+        height: auto;
     }
     """
 
@@ -91,60 +92,65 @@ class IssueDetailWidget(Static):
         self.comment_text = ""
         self.comment_position = ""
 
-    def render(self) -> str:
+    def compose(self) -> ComposeResult:
+        yield Markdown("", id="issue_detail_body", open_links=False)
+
+    def _render_body(self) -> str:
         """Render the issue details."""
         if not self.issue:
             return "[dim]Select an issue to view details[/dim]"
 
         return (
-            f"{self._render_header()}\n"
-            f"{self._render_description()}\n"
-            f"{self._render_metadata()}\n"
-            f"{self._render_hierarchy()}\n"
+            f"{self._render_header()}\n\n---\n\n"
+            f"{self._render_metadata()}\n\n---\n\n"
+            f"{self._render_description()}\n\n---\n\n"
             f"{self._render_comment()}"
         )
 
     def _render_header(self) -> str:
         """Render the detail header line."""
-        return f"[bold cyan]{self.issue.key}[/bold cyan] — {self.issue.summary}"
+        return f"**`{self.issue.key}`** — {self.issue.summary}"
 
     def _render_metadata(self) -> str:
         """Render metadata line."""
         return (
-            f"[dim]Type:[/dim] {self.issue.issue_type_emoji} {self.issue.issue_type or '—'} | "
-            f"[dim]Status:[/dim] {self.issue.status or '—'} | "
-            f"[dim]Assignee:[/dim] {self.issue.assignee or 'Unassigned'} | "
-            f"[dim]Priority:[/dim] {self.issue.priority or '—'}"
+            f"**Type:** {self.issue.issue_type_emoji} {self.issue.issue_type or '—'}  \n"
+            f"**Status:** {self.issue.status or '—'}  \n"
+            f"**Assignee:** {self.issue.assignee or 'Unassigned'}  \n"
+            f"**Priority:** {self.issue.priority or '—'}  \n"
+            f"**Labels:** {self.issue.labels or '—'}  \n"
+            f"**Versions:** {self.issue.versions or '—'}  \n"
+            f"{self._render_hierarchy()}"
         )
 
     def _render_description(self) -> str:
-        """Render a compact issue description preview."""
-        description = self.issue.description or "—"
-        if len(description) > 500:
-            description = f"{description[:497]}..."
-        return f"[dim]Description:[/dim]\n{description}"
+        """Render the issue description unchanged as its own Markdown block."""
+        description = self.issue.description.strip() if self.issue.description else ""
+        if not description:
+            return "> No description provided."
+        return description
 
     def _render_hierarchy(self) -> str:
         """Render parent/child relationship line."""
-        # child_keys only reflects Jira's 'subtasks' field (real sub-tasks); Epic/Story
-        # children (via 'parent') aren't known without a query, so don't claim "none".
         if self.issue.child_keys:
             children = ", ".join(self.issue.child_keys)
+        elif not self.issue.children_loaded:
+            children = "loading..."
         else:
-            children = "unknown — press 'd' to check"
-        return (
-            f"[dim]Parent:[/dim] {self.issue.parent_key or '—'} | "
-            f"[dim]Children:[/dim] {children}"
-        )
+            children = "—"
+        return f"**Parent:** {self.issue.parent_key or '—'}  \n**Children:** {children}"
 
     def _render_comment(self) -> str:
         """Render active comment view."""
-        comment_text = self.comment_text or "[dim]No comment selected[/dim]"
-        return f"[dim]Comment:[/dim] {self.comment_position}\n{comment_text}"
+        comment_text = self.comment_text or "No comments"
+        position = f" ({self.comment_position.split('/')[-1]} total)" if self.comment_position else ""
+        return f"## Comments{position}\n\n{comment_text}"
 
     def update_issue(self, issue: IssueRow | None, comment_text: str = "", comment_position: str = "") -> None:
         """Update displayed issue."""
         self.issue = issue
         self.comment_text = comment_text
         self.comment_position = comment_position
-        self.update(self.render())
+        self.query_one("#issue_detail_body", Markdown).update(self._render_body())
+        for button in self.query("#issue_detail_actions Button"):
+            button.disabled = issue is None

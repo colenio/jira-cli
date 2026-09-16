@@ -7,6 +7,15 @@ The CLI and TUI share the same core client, query, model, and rendering layers s
 ## Start Here
 
 - [Features](features.md) for CLI commands and TUI workflows
-- [Architecture](architecture.md) for the module boundaries
+- [Architecture](explanation/architecture.md) for the module boundaries and design decisions
 - [Distribution](distribution.md) for install and release notes
 - [API Reference](api/client.md) for generated Python API documentation
+
+## Documentation Map
+
+The documentation follows the Diátaxis model:
+
+- **Tutorials:** guided first-use material for new users.
+- **How-to guides:** focused procedures for configuration, workflows, and releases.
+- **Reference:** command options, provider capabilities, and API details.
+- **Explanation:** architecture, provider choices, design trade-offs, and migration assessments.

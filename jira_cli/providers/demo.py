@@ -28,6 +28,8 @@ DEMO_PROVIDER_DESCRIPTOR = ProviderDescriptor(
                 SortDescriptor(name="status", field="status"),
             ),
             actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
                 ActionDescriptor(name="comment"),
                 ActionDescriptor(name="assign"),
                 ActionDescriptor(name="transition"),
@@ -41,10 +43,21 @@ DEMO_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ResourceDescriptor(
             kind="versions",
             fields=("name", "description", "releaseDate", "released", "archived"),
+            actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
+                ActionDescriptor(name="delete"),
+                ActionDescriptor(name="release"),
+            ),
         ),
         ResourceDescriptor(
             kind="labels",
-            fields=("name", "issueCount"),
+            fields=("name", "color", "description", "issueCount"),
+            actions=(
+                ActionDescriptor(name="create"),
+                ActionDescriptor(name="edit"),
+                ActionDescriptor(name="delete"),
+            ),
         ),
     ),
 )

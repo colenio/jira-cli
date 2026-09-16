@@ -267,6 +267,21 @@ async def test_edit_title_updates_selected_issue(sample_issues):
     assert client.update_calls == [("A-1", {"summary": "Renamed issue"})]
 
 
+def test_issue_detail_uses_markdown_separators_between_sections(sample_issues):
+    from jira_cli.tui.features.issues.widgets import IssueDetailWidget
+
+    widget = IssueDetailWidget()
+    widget.issue = sample_issues[0]
+    widget.comment_text = "**@reviewer**\n\nLooks good"
+    widget.comment_position = "1/1"
+
+    rendered = widget._render_body()
+
+    assert rendered.count("\n\n---\n\n") == 3
+    assert rendered.index("Type:") < rendered.index("No description provided")
+    assert rendered.index("No description provided") < rendered.index("Comments")
+
+
 async def test_action_suggester_completion():
     from jira_cli.tui.features.workflow.suggester import ActionSuggester
 

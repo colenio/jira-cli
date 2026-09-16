@@ -122,6 +122,38 @@ def test_github_label_dict_includes_issue_count() -> None:
     }
 
 
+def test_github_repository_find_children_uses_sub_issue_endpoint() -> None:
+    from jira_cli.providers.github import GitHubProvider
+
+    class Response:
+        def json(self):
+            return [
+                {
+                    "number": 7,
+                    "title": "Child issue",
+                    "state": "open",
+                    "body": "Details",
+                    "updated_at": "2026-09-16T10:00:00Z",
+                    "labels": [],
+                    "assignees": [],
+                    "user": {"login": "ada", "name": "Ada Lovelace"},
+                }
+            ]
+
+    calls = []
+    provider = GitHubProvider.__new__(GitHubProvider)
+    provider._delegate = None
+    provider._owner = "colenio"
+    provider._repo_name = "jira-cli"
+    provider._github = type("GitHub", (), {"request": lambda _, *args, **kwargs: calls.append((args, kwargs)) or Response()})()
+
+    children = provider.find_children("#42")
+
+    assert children[0].key == "#7"
+    assert children[0].parent_key == "#42"
+    assert calls[0][0] == ("GET", "/repos/colenio/jira-cli/issues/42/sub_issues")
+
+
 def test_parse_project_target() -> None:
     from jira_cli.providers.github import parse_project_target
 

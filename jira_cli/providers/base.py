@@ -158,6 +158,10 @@ class IssueTrackerProvider(Protocol):
         """List comments for an issue."""
         ...
 
+    def find_children(self, key: str, max_results: int = 50) -> list:
+        """Return child issues for a provider-native issue hierarchy."""
+        ...
+
     def add_comment(self, key: str, body: str | dict, use_adf: bool = False) -> dict:
         """Add a comment to an issue."""
         ...

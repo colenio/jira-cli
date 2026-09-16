@@ -81,6 +81,7 @@ class IssueRow(BaseModel):
     versions: str = ""
     parent_key: str = ""
     child_keys: list[str] = Field(default_factory=list)
+    children_loaded: bool = False
 
     @staticmethod
     def issue_type_to_emoji(issue_type: str) -> str:
