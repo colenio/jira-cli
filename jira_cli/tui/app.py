@@ -369,7 +369,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         timeline.update_items(self._timeline_items())
         timeline.update_markers(self._timeline_markers())
         if self.timeline_visible:
-            timeline.focus()
+            timeline.focus_first_epic()
             self.notify("Timeline view")
         else:
             self.query_one("#issue_detail", IssueDetailWidget).display = True

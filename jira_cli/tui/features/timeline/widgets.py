@@ -26,6 +26,7 @@ class TimelineWidget(Vertical):
 
     COLORS = ("cyan", "green", "yellow", "magenta", "blue")
     BAR_WIDTH = 10
+    VERSIONS_ROW_KEY = "__versions__"
     BINDINGS = [
         Binding("s", "cycle_granularity", "Scale", show=False),
     ]
@@ -45,6 +46,7 @@ class TimelineWidget(Vertical):
         self.epics: list[TimelineItem] = []
         self._periods: list[tuple[str, date]] = []
         self._unit = "month"
+        self._row_keys: list[str] = []
 
     def compose(self) -> ComposeResult:
         yield Static(id="timeline_scale")
@@ -58,12 +60,20 @@ class TimelineWidget(Vertical):
         self.items = items
         self._refresh()
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Navigate to the selected Epic or child issue with Enter."""
-        rows = self._visible_rows()
+    def focus_first_epic(self) -> None:
+        """Focus the Epic table and select its first row."""
         table = self.query_one("#timeline_table", DataTable)
-        if 0 <= table.cursor_row < len(rows):
-            self.post_message(self.IssueSelected(rows[table.cursor_row].key))
+        if self.epics:
+            table.move_cursor(row=0, column=0)
+            table.focus()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Navigate to a selected Epic; Versions is informational only."""
+        table = self.query_one("#timeline_table", DataTable)
+        if 0 <= table.cursor_row < len(self._row_keys):
+            key = self._row_keys[table.cursor_row]
+            if key != self.VERSIONS_ROW_KEY:
+                self.post_message(self.IssueSelected(key))
 
     def update_markers(self, markers: list[TimelineMarker]) -> None:
         """Replace versions or milestones shown in the timeline columns."""
@@ -92,6 +102,7 @@ class TimelineWidget(Vertical):
         try:
             table = self.query_one("#timeline_table", DataTable)
             table.clear(columns=True)
+            self._row_keys = []
             labels = [label for label, _ in self._periods]
             table.add_column("Epic", width=14)
             table.add_column("Title", width=42)
@@ -106,8 +117,17 @@ class TimelineWidget(Vertical):
                     *cells,
                     key=epic.key,
                 )
+                self._row_keys.append(epic.key)
             if self.markers and self._periods:
-                table.add_row("", "Versions", *self._marker_cells(self.markers, self._periods, self._unit), key="__versions__")
+                marker_cells = self._marker_cells(self.markers, self._periods, self._unit)
+                table.add_row(
+                    "",
+                    Text("Versions", style="dim"),
+                    *marker_cells,
+                    height=max(1, self._marker_row_height(self.markers, self._periods, self._unit)),
+                    key=self.VERSIONS_ROW_KEY,
+                )
+                self._row_keys.append(self.VERSIONS_ROW_KEY)
             if not self.epics:
                 table.add_row("", "No Epics with planning dates", *([""] * len(self._periods)))
             self._align_today(table, self._periods, self._unit)
@@ -116,7 +136,6 @@ class TimelineWidget(Vertical):
             )
         except Exception:
             pass
-
 
     def _resolve_granularity(self, first: date, last: date) -> str:
         if self.granularity != "auto":
@@ -141,8 +160,6 @@ class TimelineWidget(Vertical):
         first = min(starts)
         last = max(ends)
         assert first is not None and last is not None
-        if self.granularity == "auto":
-            first = self._period_start(date.today(), unit)
         return self._periods_between(first, last, unit)
 
     def _bar_cells(self, item: TimelineItem, periods: list[tuple[str, date]], unit: str, color: str) -> list[Text]:
@@ -164,6 +181,13 @@ class TimelineWidget(Vertical):
                 text.append(f"◆ {self._short_marker_name(marker.name)}", style=marker.color)
             cells.append(text)
         return cells
+
+    def _marker_row_height(self, markers: list[TimelineMarker], periods: list[tuple[str, date]], unit: str) -> int:
+        """Return the number of lines required by coincident version markers."""
+        return max(
+            (sum(self._period_end(period, unit) >= marker.date >= period for marker in markers) for _, period in periods),
+            default=1,
+        )
 
     @staticmethod
     def _short_marker_name(name: str, width: int = 8) -> str:
