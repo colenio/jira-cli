@@ -61,6 +61,30 @@ def test_registry_resolves_explicit_demo_target() -> None:
     assert context.label == "Demo / SANDBOX"
 
 
+def test_jira_validation_reports_missing_token(monkeypatch) -> None:
+    monkeypatch.setenv("JIRA_URL", "https://example.atlassian.net")
+    monkeypatch.setenv("JIRA_EMAIL", "user@example.com")
+    monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
+
+    registry = ProviderRegistry(load_env=False)
+    context = registry.resolve_context(provider="jira", project="DEMO")
+
+    warning = registry.validate_context(context)
+    assert warning is not None
+    assert "missing JIRA_API_TOKEN" in warning
+    assert "https://id.atlassian.com/manage-profile/security/api-tokens" in warning
+
+
+def test_github_validation_reports_missing_token(monkeypatch) -> None:
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(ProviderRegistry, "github_token", staticmethod(lambda: ""))
+
+    registry = ProviderRegistry(load_env=False)
+    context = registry.resolve_context(provider="github", repository="owner/repo")
+
+    assert registry.validate_context(context).startswith("GitHub / owner/repo validation failed:")
+
+
 def test_registry_resolves_jira_context_from_env(monkeypatch) -> None:
     monkeypatch.setenv("JIRA_PROJECT", "COM")
     monkeypatch.setenv("JIRA_URL", "https://herrenknecht.atlassian.net")
@@ -189,6 +213,7 @@ def test_registry_interactive_context_selection(monkeypatch) -> None:
     monkeypatch.setenv("JIRA_API_TOKEN", "token")
     monkeypatch.setenv("JIRA_PROJECT", "COM")
     monkeypatch.setattr(ProviderRegistry, "github_token", staticmethod(lambda: "ghp_fake"))
+    monkeypatch.setattr(ProviderRegistry, "validate_context", lambda self, context: None)
 
     # Mock interactive prompt returning option 1 (github-project)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)

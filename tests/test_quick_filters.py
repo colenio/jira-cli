@@ -2,6 +2,7 @@
 used identically by the CLI (JiraQuery.search_project) and the TUI (':' command bar)."""
 
 from jira_cli.quick_filters import QuickFilterResolver
+from jira_cli.providers.base import ProviderDescriptor
 
 
 class FakeClient:
@@ -13,6 +14,14 @@ class FakeClient:
 
     def find_assignable_users(self, project_key, query, max_results=20):
         return list(self.assignable_users)
+
+    def describe(self):
+        return ProviderDescriptor(name="jira")
+
+
+class FakeGitHubClient(FakeClient):
+    def describe(self):
+        return ProviderDescriptor(name="github")
 
 
 def test_clause_builds_quoted_field_equality():
@@ -28,6 +37,17 @@ def test_clause_key_is_uppercased_and_unquoted():
 def test_clause_assignee_me_uses_current_user():
     resolver = QuickFilterResolver(FakeClient(), "PROJ")
     assert resolver.clause("assignee", "me") == "assignee = currentUser()"
+
+
+def test_clause_assignee_none_uses_jira_empty_operator():
+    resolver = QuickFilterResolver(FakeClient(), "PROJ")
+    assert resolver.clause("assignee", "none") == "assignee is EMPTY"
+    assert resolver.resolve("assignee", "unassigned")[1] == "assignee is EMPTY"
+
+
+def test_clause_assignee_none_uses_github_unassigned_value():
+    resolver = QuickFilterResolver(FakeGitHubClient(), "owner/repo")
+    assert resolver.clause("assignee", "none") == "assignee = none"
 
 
 def test_resolve_prefers_known_values_over_server_lookup():

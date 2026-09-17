@@ -6,6 +6,7 @@ from . import __version__
 from .commands.issue import issue_close, issue_comment, issue_create, issue_edit, issue_group, issue_reopen
 from .commands.query import children_issues, find_issues, list_issues, overdue_issues, search_issues, view_issue
 from .commands.ui import launch_tui
+from .commands.validate import validate_contexts
 from .commands.user import user_group
 from .commands.version import version_group
 from .commands.workflow import assign_issue, transition_issue
@@ -38,6 +39,7 @@ issue_group.add_command(issue_reopen, name="reopen")
 
 # TUI command
 cli.add_command(launch_tui)
+cli.add_command(validate_contexts)
 
 # Additional top-level command groups, gh-style (gh issue / gh pr / gh repo)
 cli.add_command(version_group)

@@ -70,6 +70,8 @@ class QuickFilterResolver:
         """Build a JQL clause for one quick-filter dimension (server-side, never local-only)."""
         if dimension == "assignee" and value.strip().lower() == "me":
             return "assignee = currentUser()"
+        if dimension == "assignee" and value.strip().lower() in {"none", "unassigned"}:
+            return "assignee is EMPTY" if self.client.describe().name == "jira" else "assignee = none"
         if dimension == "key":
             return f"key = {value.strip().upper()}"
         field = QUICK_FILTER_JQL_FIELDS[dimension]
@@ -85,6 +87,8 @@ class QuickFilterResolver:
         """
         if dimension == "assignee" and value.strip().lower() == "me":
             return "me", "assignee = currentUser()"
+        if dimension == "assignee" and value.strip().lower() in {"none", "unassigned"}:
+            return "Unassigned", self.clause(dimension, "none")
 
         resolved = resolve_value(known_values or [], value)
         if dimension == "assignee":

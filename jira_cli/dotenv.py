@@ -1,11 +1,11 @@
-"""DotEnv handling — robust loading from CWD/.env or local.env."""
+"""Load the first local.env or .env file found while walking up the directory tree."""
 
 import os
 from pathlib import Path
 
 
 class DotEnv:
-    """Load environment variables from .env or local.env in CWD or parent directories."""
+    """Load local.env before .env from CWD or up to three parent directories."""
 
     def __init__(self, search_up: int = 3, verbose: bool = False):
         """
@@ -30,7 +30,7 @@ class DotEnv:
         """
         Load from .env or local.env in CWD or parent directories.
         Tries: CWD/local.env → CWD/.env → parent/local.env → parent/.env (up to search_up levels)
-        
+
         Returns dict of loaded variables (also sets in os.environ).
         """
         cwd = Path.cwd()
@@ -63,7 +63,7 @@ class DotEnv:
                             val = self._clean_value(val)
                             loaded[key] = val
                             os.environ[key] = val
-                
+
                 self._loaded_from = candidate
                 if self.verbose:
                     print(f"[dotenv] Loaded from {self._loaded_from}")
@@ -88,5 +88,5 @@ class DotEnv:
         missing = [k for k in keys if not os.environ.get(k)]
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
-        
+
         return {k: os.environ[k] for k in keys}

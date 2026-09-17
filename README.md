@@ -32,7 +32,7 @@ For screenshots, screencasts, or trying the TUI without Jira credentials, use sy
 jira tui --demo
 ```
 
-GitHub Issues can be browsed read-only in the TUI. Authentication uses `GH_TOKEN`/`GITHUB_TOKEN`
+GitHub Issues can be browsed read-only in the TUI. Authentication uses `GH_TOKEN`
 or your existing `gh auth login` session, and `-R` works like `gh -R owner/name`:
 
 ```bash
@@ -53,7 +53,12 @@ done states on the right.
 
 ## Setup
 
-Create a `.env` or `local.env` file in your working directory (auto-discovered in CWD or parent directories):
+Start with the tracked [local.env.example](local.env.example): copy it to `local.env` or `.env`,
+then replace the placeholder values. Never commit the copied file because it contains credentials.
+
+The CLI searches the current directory and up to three parent directories. In each directory it
+checks `local.env` before `.env` and loads the first matching file. Existing process environment
+variables are used when no file is found.
 
 ```bash
 # Required
@@ -66,6 +71,17 @@ JIRA_PROJECT=PROJ      # Default project for list/find/tui
 ```
 
 Get your API token from Jira Cloud: Account Settings → Security → Create API Token.
+
+For GitHub, set `GH_TOKEN`, configure `GH_REPO` or `GH_PROJECT` as needed, or use an existing
+`gh auth login` session. Validate configured contexts before starting the TUI with:
+
+```powershell
+jira validate
+jira validate --provider jira --project PROJ
+jira validate --provider github --repo owner/repository
+```
+
+Use `jira tui --demo` for a credential-free local run.
 
 ## Development
 

@@ -32,18 +32,22 @@ Date: 2026-09-14
 
 - Fallbacks for Jira Cloud/API drift with POST search and 410/404/405 translation.
 
-### 3) Version (Fix Version) Upsert
+### 3) Timeline / Roadmap View
+
+- Consider a provider-neutral timeline view for issues with start/due dates, fix versions, milestones, and parent/child relationships. Jira could provide a Gantt-like view where its date fields support it; GitLab's roadmap is a useful interaction reference. Keep this as a later feature until date semantics and a compact terminal rendering are defined.
+
+### 4) Version (Fix Version) Upsert
 
 - Idempotent create/update version helper (lookup by name, due date, description).
 
-### 4) Field-Safe Issue Update
+### 5) Field-Safe Issue Update
 
 - Fetch editmeta and update only fields configured in project context.
 
-### 5) Label Harmonization Strategy
+### 6) Label Harmonization Strategy
 
 - Optional `--label-mode` (`merge` vs `replace`) and label alias mapping file.
 
-### 6) Token Metadata Display
+### 7) Token Metadata Display
 
 - Display API token expiration metadata and early warnings in TUI status bar.

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from jira_cli.models import IssueRow
+from jira_cli.tui.logging import tui_logger
 
 
 class IssueChildrenPrefetch:
@@ -26,6 +27,7 @@ class IssueChildrenPrefetch:
         self.selected_issue = selected_issue
         self.update_detail = update_detail
         self._cache: dict[str, list[str]] = {}
+        self._logger = tui_logger()
 
     def prefetch(self, issue: IssueRow) -> None:
         """Start loading children unless this issue is already resolved."""
@@ -35,12 +37,15 @@ class IssueChildrenPrefetch:
             self._cache[issue.key] = list(issue.child_keys)
             issue.children_loaded = True
             return
+        self._logger.debug("Starting child prefetch for %s", issue.key)
 
         def load_children() -> None:
             try:
                 children = self.query.find_children(issue.key, max_results=100)
                 self._cache[issue.key] = [child.key for child in children]
+                self._logger.debug("Child prefetch completed for %s: %s", issue.key, self._cache[issue.key])
             except Exception:
+                self._logger.exception("Child prefetch failed for %s", issue.key)
                 self._cache[issue.key] = []
             issue.child_keys = self._cache[issue.key]
             issue.children_loaded = True

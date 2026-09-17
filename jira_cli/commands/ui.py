@@ -2,8 +2,6 @@
 
 import click
 
-from jira_cli.commands.common import get_jira_client, resolve_project
-
 
 @click.command(name="tui")
 @click.option("--project", "project", "-p", default="", help="Jira project key or GitHub Project (owner/number); defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
@@ -25,6 +23,10 @@ def launch_tui(project: str, provider: str, repository: str, gh_project: str, de
         context = registry.resolve_context(
             provider=provider or None, project=project or None, repository=repository or None, demo=demo
         )
+        warning = registry.validate_context(context)
+        if warning:
+            click.echo(f"WARNING: {warning}")
+            raise SystemExit(1)
         client = registry.create_or_exit(context)
         run_tui(client, context.target, context=context)
 
@@ -37,3 +39,4 @@ def launch_tui(project: str, provider: str, repository: str, gh_project: str, de
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         raise SystemExit(1)
+

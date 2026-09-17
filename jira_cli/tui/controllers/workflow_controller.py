@@ -8,10 +8,13 @@ from textual.widgets import Input, Label
 from jira_cli.query import JiraQuery, order_by_clause
 from jira_cli.tui.features.query.service import QUICK_FILTER_DIMENSIONS, parse_command, resolve_bare_quick_filter
 from jira_cli.tui.features.workflow.suggester import ActionSuggester
+from jira_cli.tui.logging import tui_logger
 
 
 class WorkflowControllerMixin:
     """Own command input dispatch and issue workflow submissions."""
+
+    tui_log = tui_logger()
 
     async def _submit_transition(self, expression: str) -> None:
         issue_key = self.pending_issue_key
@@ -23,15 +26,16 @@ class WorkflowControllerMixin:
             message = self.workflow_feature.submit_transition_expression(issue_key, expression, choice_map, default_transition_id=transition_id)
             return message, self._run_remote_query()
 
-        def on_done(worker) -> None:
-            if worker.result:
-                message, rows = worker.result
-                self.all_issues = rows
-                self.notify(message)
-                self.run_worker(self._apply_filter(self.query_one("#filter_input", Input).value), exclusive=True)
-                self._restore_active_focus(preferred_key=issue_key)
-
-        self.run_worker(run_transition, thread=True, exclusive=True, exit_on_error=False, callback=on_done)
+        worker = self.run_worker(run_transition, thread=True, exclusive=True, exit_on_error=False)
+        try:
+            message, rows = await worker.wait()
+        except Exception as error:
+            self.tui_log.exception("Transition failed for %s", issue_key)
+            raise RuntimeError(f"Transition failed for {issue_key}: {error}") from error
+        self.all_issues = rows
+        self.notify(message)
+        await self._apply_filter(self.query_one("#filter_input", Input).value)
+        self._restore_active_focus(preferred_key=issue_key)
 
     async def _submit_assign(self, expression: str) -> None:
         issue_key = self.pending_issue_key
@@ -40,15 +44,16 @@ class WorkflowControllerMixin:
             message = self.workflow_feature.submit_assign_expression(issue_key, expression)
             return message, self._run_remote_query()
 
-        def on_done(worker) -> None:
-            if worker.result:
-                message, rows = worker.result
-                self.all_issues = rows
-                self.notify(message)
-                self.run_worker(self._apply_filter(self.query_one("#filter_input", Input).value), exclusive=True)
-                self._restore_active_focus(preferred_key=issue_key)
-
-        self.run_worker(run_assign, thread=True, exclusive=True, exit_on_error=False, callback=on_done)
+        worker = self.run_worker(run_assign, thread=True, exclusive=True, exit_on_error=False)
+        try:
+            message, rows = await worker.wait()
+        except Exception as error:
+            self.tui_log.exception("Assignment failed for %s", issue_key)
+            raise RuntimeError(f"Assignment failed for {issue_key}: {error}") from error
+        self.all_issues = rows
+        self.notify(message)
+        await self._apply_filter(self.query_one("#filter_input", Input).value)
+        self._restore_active_focus(preferred_key=issue_key)
 
     async def _submit_edit_title(self, expression: str) -> None:
         title = expression.strip()

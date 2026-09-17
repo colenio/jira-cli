@@ -16,13 +16,15 @@ _REPO_GITHUB_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="github",
     query_language="GitHub issue query",
     supports_board=False,
+    token_env="GH_TOKEN",
+    token_url="https://github.com/settings/personal-access-tokens",
     resources=(
         ResourceDescriptor(
             kind="issues",
             fields=("key", "summary", "status", "assignee", "reporter", "labels", "milestone", "updated"),
             filters=(
                 FilterDescriptor(name="status", field="state"),
-                FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                FilterDescriptor(name="assignee", field="assignee", special_values=("me", "none")),
                 FilterDescriptor(name="reporter", field="author"),
                 FilterDescriptor(name="label", field="labels"),
                 FilterDescriptor(name="milestone", field="milestone"),
@@ -243,13 +245,15 @@ class GitHubProjectProvider:
             name="github",
             query_language="GitHub project filter",
             supports_board=True,
+            token_env="GH_TOKEN",
+            token_url="https://github.com/settings/personal-access-tokens",
             resources=(
                 ResourceDescriptor(
                     kind="issues",
                     fields=("key", "summary", "status", "assignee", "reporter", "labels", "updated", "issuetype"),
                     filters=(
                         FilterDescriptor(name="status", field="status", special_values=status_names),
-                        FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                        FilterDescriptor(name="assignee", field="assignee", special_values=("me", "none")),
                         FilterDescriptor(name="reporter", field="author"),
                         FilterDescriptor(name="label", field="labels"),
                         FilterDescriptor(name="repo", field="repository"),
@@ -904,6 +908,8 @@ def _matches_item(item: dict[str, Any], filters: dict[str, str]) -> bool:
     if "assignee" in filters:
         target_assignee = filters["assignee"].casefold()
         assignees = content.get("assignees", {}).get("nodes", []) if isinstance(content, dict) else []
+        if target_assignee in {"none", "unassigned"}:
+            return not assignees
         matched = any(
             target_assignee in a.get("login", "").casefold() or target_assignee in a.get("name", "").casefold()
             for a in assignees

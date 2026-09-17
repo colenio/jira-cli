@@ -9,6 +9,8 @@ from .base import ActionDescriptor, FilterDescriptor, ProviderDescriptor, Resour
 JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     name="jira",
     query_language="JQL",
+    token_env="JIRA_API_TOKEN",
+    token_url="https://id.atlassian.com/manage-profile/security/api-tokens",
     resources=(
         ResourceDescriptor(
             kind="issues",
@@ -16,7 +18,7 @@ JIRA_PROVIDER_DESCRIPTOR = ProviderDescriptor(
             filters=(
                 FilterDescriptor(name="type", field="issuetype"),
                 FilterDescriptor(name="status", field="status"),
-                FilterDescriptor(name="assignee", field="assignee", special_values=("me",)),
+                FilterDescriptor(name="assignee", field="assignee", special_values=("me", "none")),
                 FilterDescriptor(name="label", field="labels"),
                 FilterDescriptor(name="priority", field="priority"),
                 FilterDescriptor(name="key", field="key"),

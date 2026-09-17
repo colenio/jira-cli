@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 import sys
 from urllib.parse import urlparse
 
@@ -14,9 +13,14 @@ from jira_cli.demo import DEMO_PROJECT_KEY
 from jira_cli.dotenv import DotEnv
 
 from .base import IssueTrackerProvider, ProviderContext
-from .demo import DemoProvider
-from .github import GitHubProvider, is_project_target
-from .jira import JiraProvider
+from .github import is_project_target
+from .provider_factory import (
+    create_or_exit,
+    create_provider,
+    github_repository_from_context as resolve_github_repository,
+    github_token as resolve_github_token,
+    validate_context,
+)
 
 
 def demo_context(target: str = DEMO_PROJECT_KEY) -> ProviderContext:
@@ -78,7 +82,7 @@ class ProviderRegistry:
             if github_repository and self._has_github_token():
                 contexts.append(github_context(github_repository))
 
-        if self._has_jira_credentials():
+        if self._has_jira_connection_settings():
             try:
                 contexts.append(jira_context(project))
             except ValueError:
@@ -126,6 +130,22 @@ class ProviderRegistry:
         if not requested:
             real_contexts = [c for c in self.available_contexts(project) if c.provider != "demo"]
 
+            if len(real_contexts) > 1 and interactive:
+                valid_contexts = []
+                for context in real_contexts:
+                    try:
+                        warning = self.validate_context(context)
+                    except Exception as error:
+                        warning = f"{context.label} validation request failed: {error}"
+                    if warning:
+                        click.echo(f"WARNING: {warning}")
+                    else:
+                        valid_contexts.append(context)
+                if valid_contexts:
+                    real_contexts = valid_contexts
+                else:
+                    raise ValueError("No configured provider context passed validation")
+
             if len(real_contexts) == 1:
                 return real_contexts[0]
 
@@ -156,66 +176,26 @@ class ProviderRegistry:
         raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, jira")
 
     def create_provider(self, context: ProviderContext) -> IssueTrackerProvider:
-        """Instantiate a provider for the given context."""
-        if context.provider == "demo":
-            return DemoProvider()
-        if context.provider in ("github", "gh", "github-project", "github_project"):
-            token = self.github_token()
-            if not token:
-                raise ValueError("Missing GitHub token. Set GH_TOKEN/GITHUB_TOKEN or run: gh auth login")
-            default_owner = ""
-            repo = self.github_repository_from_context()
-            if repo and "/" in repo:
-                default_owner = repo.split("/")[0]
-            return GitHubProvider(target=context.target, token=token, default_owner=default_owner)
-        if context.provider == "jira":
-            base_url = os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL")
-            email = os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER")
-            api_token = os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_TOKEN")
-            missing = []
-            if not base_url:
-                missing.append("JIRA_URL or JIRA_BASE_URL")
-            if not email:
-                missing.append("JIRA_EMAIL or JIRA_USER")
-            if not api_token:
-                missing.append("JIRA_API_TOKEN or JIRA_TOKEN")
-            if missing:
-                raise ValueError(f"Missing: {', '.join(missing)}")
-            return JiraProvider(base_url=base_url, email=email, api_token=api_token)
-        raise ValueError(f"Unknown provider context '{context.provider}'")
+        """Instantiate a provider through the shared provider lifecycle."""
+        return create_provider(context, self.github_token, self.github_repository_from_context)
 
     def create_or_exit(self, context: ProviderContext) -> IssueTrackerProvider:
         """Instantiate a provider, translating configuration errors to Click output."""
-        try:
-            return self.create_provider(context)
-        except ValueError as value_error:
-            click.echo(str(value_error), err=True)
-            click.echo("Configure Jira in .env/local.env, GitHub via gh auth/GH_TOKEN, or use --provider demo / --demo.", err=True)
-            raise SystemExit(1) from value_error
+        return create_or_exit(context, self.github_token, self.github_repository_from_context)
+
+    def validate_context(self, context: ProviderContext) -> str | None:
+        """Validate provider credentials through the shared provider lifecycle."""
+        return validate_context(context, self.github_token, self.github_repository_from_context)
 
     @staticmethod
     def github_token() -> str:
         """Resolve GitHub token from environment or gh CLI auth."""
-        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-        if token:
-            return token
-        try:
-            result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
-        except FileNotFoundError:
-            return ""
-        return result.stdout.strip() if result.returncode == 0 else ""
+        return resolve_github_token()
 
     @classmethod
     def github_repository_from_context(cls) -> str:
         """Infer owner/repository from env, git remote, or gh CLI."""
-        configured = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY")
-        if configured:
-            return configured
-        remote = cls._git_remote_url()
-        parsed = cls.parse_github_remote(remote)
-        if parsed:
-            return parsed
-        return cls._gh_repo_view()
+        return resolve_github_repository()
 
     @staticmethod
     def parse_github_remote(remote_url: str) -> str:
@@ -233,34 +213,19 @@ class ProviderRegistry:
         return ""
 
     @staticmethod
-    def _git_remote_url() -> str:
-        try:
-            result = subprocess.run(
-                ["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, check=False
-            )
-        except FileNotFoundError:
-            return ""
-        return result.stdout.strip() if result.returncode == 0 else ""
-
-    @staticmethod
-    def _gh_repo_view() -> str:
-        try:
-            result = subprocess.run(
-                ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError:
-            return ""
-        return result.stdout.strip() if result.returncode == 0 else ""
-
-    @staticmethod
     def _has_jira_credentials() -> bool:
         return bool(
             (os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL"))
             and (os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER"))
-            and (os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_TOKEN"))
+            and os.environ.get("JIRA_API_TOKEN")
+        )
+
+    @staticmethod
+    def _has_jira_connection_settings() -> bool:
+        return bool(
+            (os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL"))
+            and (os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER"))
+            and (os.environ.get("JIRA_PROJECT") or os.environ.get("JIRA_PROJECT_KEY"))
         )
 
     @classmethod

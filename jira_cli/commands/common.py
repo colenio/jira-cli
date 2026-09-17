@@ -32,7 +32,7 @@ def get_jira_client(
 
     base_url = base_url or os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL")
     email = email or os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER")
-    api_token = api_token or os.environ.get("JIRA_API_TOKEN") or os.environ.get("JIRA_TOKEN")
+    api_token = api_token or os.environ.get("JIRA_API_TOKEN")
 
     if not all([base_url, email, api_token]):
         missing = []
@@ -41,7 +41,7 @@ def get_jira_client(
         if not email:
             missing.append("JIRA_EMAIL or JIRA_USER")
         if not api_token:
-            missing.append("JIRA_API_TOKEN or JIRA_TOKEN")
+            missing.append("JIRA_API_TOKEN")
 
         click.echo(f"Missing: {', '.join(missing)}", err=True)
         click.echo("Configure in .env or local.env in CWD or parent directories:", err=True)

@@ -58,7 +58,7 @@ class CommandSuggester(Suggester):
                 candidates = distinct_fn(self._issues_provider())
                 if verb == "assignee":
                     external = self._assignees_provider() if self._assignees_provider else []
-                    candidates = ["me", *sorted(set(candidates) | set(external))]
+                    candidates = ["me", "none", "unassigned", *sorted(set(candidates) | set(external))]
                 match = self._first_prefix_match(candidates, arg)
                 return f"{prefix}{match}" if match else None
 

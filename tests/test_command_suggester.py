@@ -52,6 +52,11 @@ async def test_suggests_assignee_from_external_user_catalog(issues):
     assert await suggester.get_suggestion("assignee=Tob") == "assignee=Tobias Braun"
 
 
+async def test_suggests_unassigned_assignee_values(suggester):
+    assert await suggester.get_suggestion("assignee=no") == "assignee=none"
+    assert await suggester.get_suggestion("assignee=un") == "assignee=unassigned"
+
+
 async def test_suggests_contextual_resource_action(issues):
     suggester = CommandSuggester(lambda: issues, verbs_provider=lambda: ["labels", "create", "edit"])
 

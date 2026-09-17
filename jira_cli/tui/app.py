@@ -42,6 +42,7 @@ from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidg
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
 from jira_cli.tui.features.workflow.suggester import ActionSuggester
 from jira_cli.tui.header import JiraTopBar
+from jira_cli.tui.logging import configure_tui_logging
 
 ResourceKind = Literal["issues", "users", "versions", "labels"]
 
@@ -285,6 +286,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         if self.issues:
             self.update_issue_detail(self.issues[0])
             self._prefetch_comments_for_issue(self.issues[0])
+            self._children_prefetch.prefetch(self.issues[0])
 
     def _selected_issue(self) -> IssueRow | None:
         """Return the selected issue from the active table or board."""
@@ -426,8 +428,13 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         self.notify(help_text, title="Help")
 
 
-def run_tui(client: IssueTrackerProvider, project_key: str, context: ProviderContext | None = None) -> None:
+def run_tui(
+    client: IssueTrackerProvider,
+    project_key: str,
+    context: ProviderContext | None = None,
+) -> None:
     """Launch the TUI application."""
+    configure_tui_logging()
     query = JiraQuery(client)
     try:
         issues = query.search_project(project_key=project_key, max_results=100)

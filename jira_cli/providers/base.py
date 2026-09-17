@@ -58,6 +58,8 @@ class ProviderDescriptor(BaseModel):
     name: str
     query_language: str = "query"
     supports_board: bool = True
+    token_env: str = ""
+    token_url: str = ""
     resources: tuple[ResourceDescriptor, ...] = ()
 
     def resource(self, kind: str) -> ResourceDescriptor | None:

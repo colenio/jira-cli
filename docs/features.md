@@ -93,7 +93,7 @@ milestones. This is intended for safe screenshots and screencasts without exposi
 Jira data.
 
 Use `jira tui --provider github -R owner/name` to browse GitHub Issues read-only. The GitHub
-provider uses `GH_TOKEN`/`GITHUB_TOKEN` or the existing `gh auth login` session, and can infer the
+provider uses `GH_TOKEN` or the existing `gh auth login` session, and can infer the
 repository from the current GitHub remote when `-R` is omitted.
 
 ### TUI screenshots
@@ -139,7 +139,7 @@ for Epic → Story/Task (and Story → Sub-task) children.
 
 - `:` opens an autocompleting command bar (suggests verbs and known values as you type).
 - `table` / `board` — switch view.
-- `type=<value>`, `status=<value>`, `assignee=<value>`, `label=<value>`, `key=<value>` — run a
+- `type=<value>`, `status=<value>`, `assignee=<value>`, `assignee=none` (or `unassigned`), `label=<value>`, `key=<value>` — run a
   real JQL query (`issuetype = "..."`, `status = "..."`, `assignee = "..."`, `labels = "..."`,
   `key = ...`), combinable (ANDed), never limited to whatever's already loaded. `key=` is a
   direct jump to one issue (e.g. `key=proj-123`).
