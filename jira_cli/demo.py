@@ -11,6 +11,48 @@ DEMO_PROJECT_KEY = "DEMO"
 
 _DEMO_ISSUES = [
     {
+        "key": "DEMO-10",
+        "summary": "CLI foundation",
+        "issuetype": "Epic",
+        "status": "In Progress",
+        "priority": "High",
+        "assignee": "Marcel Körtgen",
+        "updated": "2026-09-12T09:00:00.000+0000",
+        "startDate": "2026-08-01",
+        "dueDate": "2026-10-31",
+        "labels": ["roadmap", "cli"],
+        "description": "Core provider-neutral CLI and TUI foundation.",
+        "reporter": "Ada Lovelace",
+    },
+    {
+        "key": "DEMO-11",
+        "summary": "Provider expansion",
+        "issuetype": "Epic",
+        "status": "To Do",
+        "priority": "Medium",
+        "assignee": "Grace Hopper",
+        "updated": "2026-09-12T10:00:00.000+0000",
+        "startDate": "2026-10-15",
+        "dueDate": "2027-01-31",
+        "labels": ["roadmap", "providers"],
+        "description": "GitHub, Jira, and future provider capabilities.",
+        "reporter": "Marcel Körtgen",
+    },
+    {
+        "key": "DEMO-12",
+        "summary": "Documentation and release",
+        "issuetype": "Epic",
+        "status": "Backlog",
+        "priority": "Low",
+        "assignee": "Katherine Johnson",
+        "updated": "2026-09-12T11:00:00.000+0000",
+        "startDate": "2027-01-01",
+        "dueDate": "2027-03-31",
+        "labels": ["roadmap", "docs"],
+        "description": "Documentation site, examples, and the next release.",
+        "reporter": "Ada Lovelace",
+    },
+    {
         "key": "DEMO-1",
         "summary": "Roll out dependency update workflow",
         "issuetype": "Story",
@@ -291,6 +333,8 @@ def _to_jira_issue(issue: dict) -> JiraIssue:
             updated=issue["updated"],
             labels=issue["labels"],
             description=issue.get("description"),
+            customfield_10015=issue.get("startDate"),
+            duedate=issue.get("dueDate"),
             reporter=(
                 {"displayName": issue["reporter"]}
                 if issue.get("reporter")

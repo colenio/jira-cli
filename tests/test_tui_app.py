@@ -251,6 +251,16 @@ async def test_board_widget_focus_restored_after_command(sample_issues):
         assert selected_after.key == selected_before.key
 
 
+async def test_timeline_toggle_shows_timeline_view(app):
+    async with app.run_test() as pilot:
+        await pilot.press("g")
+        assert app.timeline_visible is True
+        assert app.query_one("#issue_timeline").display is True
+        assert app.query_one("#issue_table").display is False
+        await pilot.press("g")
+        assert app.timeline_visible is False
+
+
 async def test_edit_title_updates_selected_issue(sample_issues):
     client = FakeJiraClient()
     app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")

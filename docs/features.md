@@ -44,7 +44,7 @@ Everything you'd do in Jira Cloud's issue list/board for day-to-day triage — f
 | Watchers / notifications | ✅ | ❌ |
 | Worklog / time tracking | ✅ | ❌ |
 | Saved filters / dashboards | ✅ | ❌ (JQL is typed fresh each time; no persistence yet) |
-| Roadmap / timeline | ✅ | ❌ |
+| Roadmap / timeline | ✅ | ✅ `g` in the TUI (Epic timeline; demo data included) |
 | Automation rules | ✅ | ❌ (out of scope by design — this is a query/action tool, not a rules engine) |
 
 ## What's missing (candidates for future work)
@@ -126,6 +126,11 @@ Versions and milestones use their own resource view as well, matching `jira vers
 ![Demo milestones resource view](img/tui/06-milestones-resource.png)
 
 Header shows the current Jira user (via `/myself`, fetched at startup) next to the clock.
+
+The timeline view (`g`) shows dated Epics as colored bars on a time grid. The demo provider
+includes three dated Epics so the view can be tried without Jira credentials. Press `s` while
+the timeline is focused to cycle through automatic, weekly, monthly, quarterly, and yearly
+granularity. `Enter` returns the selected Epic to the normal issue view.
 
 Navigation: `/` for an instant local filter over the currently loaded issues, `f`/`j` to run a remote find/JQL query, `u`/`d` to drill to parent/child issues, `p`/`Esc` to reset to the project view, `r` to refresh.
 

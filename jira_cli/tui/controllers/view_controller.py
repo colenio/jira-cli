@@ -41,6 +41,8 @@ class ViewControllerMixin:
         self.board_visible = kind == "issues" and board
         self.query_one("#issue_table", IssueTableWidget).display = kind == "issues" and not board
         self.query_one("#issue_board", BoardWidget).display = kind == "issues" and board
+        self.query_one("#issue_timeline").display = False
+        self.timeline_visible = False
         self.query_one("#user_table", UserTableWidget).display = kind == "users"
         self.query_one("#version_table", VersionTableWidget).display = kind == "versions"
         self.query_one("#label_table", LabelTableWidget).display = kind == "labels"
@@ -67,7 +69,7 @@ class ViewControllerMixin:
     def _update_issue_actions_bar(self) -> None:
         """Show compact keyboard hints for selected issue actions."""
         toolbar = self.query_one("#issue_actions_bar", object)
-        toolbar.display = self.active_kind == "issues"
+        toolbar.display = self.active_kind == "issues" and not getattr(self, "timeline_visible", False)
         if not toolbar.display:
             return
         hints = []
@@ -75,6 +77,8 @@ class ViewControllerMixin:
             if self.check_action(action, ()):
                 hints.append(f"[bold yellow]{key}[/bold yellow] {label}")
         hints.extend(("[bold yellow]u[/bold yellow] Parent", "[bold yellow]d[/bold yellow] Children"))
+        if getattr(self, "timeline_visible", False):
+            hints.append("[bold yellow]s[/bold yellow] Scale")
         self.query_one("#issue_actions_hint", object).update("  |  ".join(hints))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

@@ -120,6 +120,9 @@ class JiraQuery:
                 "assignee",
                 "reporter",
                 "updated",
+                "created",
+                "duedate",
+                "customfield_10015",
                 "description",
                 "labels",
                 "fixVersions",
@@ -152,6 +155,9 @@ class JiraQuery:
                 "priority",
                 "assignee",
                 "updated",
+                "created",
+                "duedate",
+                "customfield_10015",
                 "labels",
             ]
 
