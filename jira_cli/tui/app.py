@@ -19,6 +19,7 @@ from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.issues.modals import CommentModal
 from jira_cli.tui.features.issues.prefetch import IssueChildrenPrefetch
+from jira_cli.tui.features.timeline import TimelineItem, TimelineMarker, TimelineWidget
 from jira_cli.tui.controllers.resource_actions import ResourceActionsMixin
 from jira_cli.tui.controllers.view_controller import ViewControllerMixin
 from jira_cli.tui.controllers.query_controller import QueryControllerMixin
@@ -59,6 +60,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         Binding("n", "create_resource", "New", show=True),
         Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("b", "toggle_board", "Board", show=True),
+        Binding("g", "toggle_timeline", "Timeline", show=True),
         Binding("v", "open_issue", "View in Web", show=True),
         Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("insert", "create_resource", "New", show=False),
@@ -193,6 +195,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         self.pending_transition_id = ""
         self.transition_choice_map: dict[str, str] = {}
         self.board_visible = False
+        self.timeline_visible = False
         self.comment_feature = JiraCommentFeature(client)
         self.workflow_feature = JiraWorkflowFeature(client)
         self.command_suggester = CommandSuggester(
@@ -256,6 +259,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
             with Vertical(id="issue_master"):
                 yield IssueTableWidget(self.issues, id="issue_table")
                 yield BoardWidget(self.issues, status_order=self._status_order(), id="issue_board")
+                yield TimelineWidget(id="issue_timeline")
             yield IssueDetailWidget(id="issue_detail")
         yield UserTableWidget(self.users, id="user_table")
         yield VersionTableWidget(self.versions, id="version_table")
@@ -276,6 +280,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         filter_input.disabled = True
         table = self.query_one("#issue_table", IssueTableWidget)
         self.query_one("#issue_board", BoardWidget).display = False
+        self.query_one("#issue_timeline", TimelineWidget).display = False
         self.query_one("#user_table", UserTableWidget).display = False
         self.query_one("#version_table", VersionTableWidget).display = False
         self.query_one("#label_table", LabelTableWidget).display = False
@@ -295,6 +300,70 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         if self.board_visible:
             return self.query_one("#issue_board", BoardWidget).get_selected_issue()
         return self.query_one("#issue_table", IssueTableWidget).get_selected_issue()
+
+    def _timeline_items(self) -> list[TimelineItem]:
+        """Build timeline items from provider planning dates."""
+        from datetime import date
+
+        items = []
+        for issue in self.issues:
+            start = None
+            if issue.start_date:
+                try:
+                    start = date.fromisoformat(issue.start_date[:10])
+                except ValueError:
+                    pass
+            end = start
+            if issue.due_date:
+                try:
+                    end = date.fromisoformat(issue.due_date[:10])
+                except ValueError:
+                    pass
+            items.append(TimelineItem(issue.key, issue.summary, start, end, issue.status, issue.parent_key, issue.issue_type))
+        return items
+
+    def _timeline_markers(self) -> list[TimelineMarker]:
+        """Build colored version markers from the active project's versions."""
+        from datetime import date
+
+        markers = []
+        for version in self.versions:
+            release_date = str(version.get("releaseDate") or "")[:10]
+            if not release_date:
+                continue
+            try:
+                marker_date = date.fromisoformat(release_date)
+            except ValueError:
+                continue
+            color = "green" if version.get("released") else "cyan"
+            if version.get("archived"):
+                color = "dim"
+            markers.append(TimelineMarker(str(version.get("name", "Version")), marker_date, color=color))
+        return markers
+
+    def action_toggle_timeline(self) -> None:
+        """Toggle the prototype timeline view for the current issue set."""
+        if self.active_kind != "issues":
+            self._show_resource("issues")
+        if not self.versions:
+            try:
+                self.versions = list_project_versions(self.client, self.project_key)
+            except Exception:
+                self.versions = []
+        self.timeline_visible = not self.timeline_visible
+        self.board_visible = False
+        self.query_one("#issue_table", IssueTableWidget).display = not self.timeline_visible
+        self.query_one("#issue_board", BoardWidget).display = False
+        timeline = self.query_one("#issue_timeline", TimelineWidget)
+        timeline.display = self.timeline_visible
+        timeline.update_items(self._timeline_items())
+        timeline.update_markers(self._timeline_markers())
+        if self.timeline_visible:
+            timeline.focus()
+            self.notify("Timeline view")
+        else:
+            self.query_one("#issue_table", IssueTableWidget).focus()
+            self.notify("Table view")
 
     async def action_clear_filter(self) -> None:
         """Clear active input and reset filter when needed."""

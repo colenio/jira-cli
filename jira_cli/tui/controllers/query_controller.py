@@ -43,6 +43,8 @@ class QueryControllerMixin:
         self.update_issue_detail(selected_issue)
         self._prefetch_comments_for_issue(selected_issue)
         self._children_prefetch.prefetch(selected_issue)
+        if self.timeline_visible:
+            self.query_one("#issue_timeline").update_items(self._timeline_items())
 
     async def _apply_filter(self, filter_text: str) -> None:
         """Apply the live filter to the active resource view."""

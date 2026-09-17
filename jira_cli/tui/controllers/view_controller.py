@@ -41,6 +41,8 @@ class ViewControllerMixin:
         self.board_visible = kind == "issues" and board
         self.query_one("#issue_table", IssueTableWidget).display = kind == "issues" and not board
         self.query_one("#issue_board", BoardWidget).display = kind == "issues" and board
+        self.query_one("#issue_timeline").display = False
+        self.timeline_visible = False
         self.query_one("#user_table", UserTableWidget).display = kind == "users"
         self.query_one("#version_table", VersionTableWidget).display = kind == "versions"
         self.query_one("#label_table", LabelTableWidget).display = kind == "labels"

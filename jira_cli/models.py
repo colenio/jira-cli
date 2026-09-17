@@ -35,6 +35,8 @@ class JiraIssueField(BaseModel):
     labels: list[str] = []
     created: Optional[str] = None
     updated: Optional[str] = None
+    start_date: Optional[str] = Field(None, alias="startDate")
+    due_date: Optional[str] = Field(None, alias="duedate")
     description: Optional[str] = None
 
     @field_validator("description", mode="before")
@@ -76,6 +78,8 @@ class IssueRow(BaseModel):
     priority: str = ""
     assignee: str = ""
     updated: str = ""
+    start_date: str = ""
+    due_date: str = ""
     description: str = ""
     labels: str = ""
     versions: str = ""
@@ -151,6 +155,8 @@ class IssueRow(BaseModel):
             priority=priority,
             assignee=assignee,
             updated=fields.updated or "",
+            start_date=fields.start_date or "",
+            due_date=fields.due_date or "",
             description=fields.description or "",
             labels=labels,
             versions=versions,
