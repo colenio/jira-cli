@@ -9,13 +9,24 @@ from jira_cli.query import JiraQuery
 from jira_cli.quick_filters import normalize_for_match
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget
-from jira_cli.tui.features.query.service import filter_issues
+from jira_cli.tui.features.query.service import filter_issues, run_remote_query
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget
 
 
 class QueryControllerMixin:
     """Own remote query result loading and local resource filtering."""
+
+    def _run_remote_query(self) -> list[IssueRow]:
+        """Run the currently active remote query source."""
+        return run_remote_query(
+            query=self.query,
+            project_key=self.project_key,
+            query_mode=self.query_mode,
+            query_expression=self.query_expression,
+            order_by=self.order_by,
+            max_results=100,
+        )
 
     async def _run_jql_context(self, jql: str, context_label: str) -> None:
         """Execute a provider query and set it as the active remote context."""

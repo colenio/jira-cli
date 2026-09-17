@@ -1,5 +1,6 @@
 """Main Textual application for interactive Jira issue management."""
 
+import logging
 import webbrowser
 from typing import Literal
 
@@ -43,7 +44,7 @@ from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidg
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
 from jira_cli.tui.features.workflow.suggester import ActionSuggester
 from jira_cli.tui.header import JiraTopBar
-from jira_cli.tui.logging import configure_tui_logging
+from jira_cli.tui.logging import configure_tui_logging, tui_logger
 
 ResourceKind = Literal["issues", "users", "versions", "labels"]
 
@@ -76,6 +77,14 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         Binding("question_mark", "help", "Help", show=True),
         Binding("escape", "clear_filter", "Clear Filter", show=False),
     ]
+
+    def notify(self, message: str, *, title: str = "", severity="information", timeout=None, markup: bool = True) -> None:
+        """Show a toast and persist its full text when TUI logging is enabled."""
+        logger = tui_logger()
+        if logger.handlers:
+            level = {"error": logging.ERROR, "warning": logging.WARNING}.get(str(severity), logging.INFO)
+            logger.log(level, "Toast%s: %s", f" [{title}]" if title else "", message)
+        super().notify(message, title=title, severity=severity, timeout=timeout, markup=markup)
 
     CSS = """
     Screen {
@@ -354,6 +363,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         self.board_visible = False
         self.query_one("#issue_table", IssueTableWidget).display = not self.timeline_visible
         self.query_one("#issue_board", BoardWidget).display = False
+        self.query_one("#issue_detail", IssueDetailWidget).display = False
         timeline = self.query_one("#issue_timeline", TimelineWidget)
         timeline.display = self.timeline_visible
         timeline.update_items(self._timeline_items())
@@ -362,8 +372,16 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
             timeline.focus()
             self.notify("Timeline view")
         else:
+            self.query_one("#issue_detail", IssueDetailWidget).display = True
             self.query_one("#issue_table", IssueTableWidget).focus()
             self.notify("Table view")
+        self._update_issue_actions_bar()
+
+    async def on_timeline_widget_issue_selected(self, event: TimelineWidget.IssueSelected) -> None:
+        """Return from the timeline to the selected issue's normal action view."""
+        await self._run_jql_context(f"key = {event.key}", f"Source: timeline -> {event.key}")
+        self._show_resource("issues", board=False)
+        self.notify(f"Issue {event.key}")
 
     async def action_clear_filter(self) -> None:
         """Clear active input and reset filter when needed."""

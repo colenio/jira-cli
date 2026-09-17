@@ -69,7 +69,7 @@ class ViewControllerMixin:
     def _update_issue_actions_bar(self) -> None:
         """Show compact keyboard hints for selected issue actions."""
         toolbar = self.query_one("#issue_actions_bar", object)
-        toolbar.display = self.active_kind == "issues"
+        toolbar.display = self.active_kind == "issues" and not getattr(self, "timeline_visible", False)
         if not toolbar.display:
             return
         hints = []
@@ -77,6 +77,8 @@ class ViewControllerMixin:
             if self.check_action(action, ()):
                 hints.append(f"[bold yellow]{key}[/bold yellow] {label}")
         hints.extend(("[bold yellow]u[/bold yellow] Parent", "[bold yellow]d[/bold yellow] Children"))
+        if getattr(self, "timeline_visible", False):
+            hints.append("[bold yellow]s[/bold yellow] Scale")
         self.query_one("#issue_actions_hint", object).update("  |  ".join(hints))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

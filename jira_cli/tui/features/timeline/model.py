@@ -31,6 +31,11 @@ class TimelineItem:
         """Return whether the item is a top-level Epic row."""
         return self.issue_type.casefold() == "epic"
 
+    @property
+    def issue_type_emoji(self) -> str:
+        """Return the compact icon used for an Epic row."""
+        return "🚀" if self.is_epic else "◆"
+
 
 @dataclass(frozen=True)
 class TimelineMarker:

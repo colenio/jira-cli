@@ -52,6 +52,22 @@ def test_jira_adf_description_is_normalized_to_text():
     assert issue.fields.description == "First paragraph\n\nSecond paragraph"
 
 
+def test_issue_row_reads_jira_custom_start_date():
+    issue = JiraIssue(
+        key="TEST-DATE",
+        fields=JiraIssueField(
+            summary="Planned work",
+            customfield_10015="2026-09-01",
+            duedate="2026-09-30",
+        ),
+    )
+
+    row = IssueRow.from_jira_issue(issue)
+
+    assert row.start_date == "2026-09-01"
+    assert row.due_date == "2026-09-30"
+
+
 def test_dotenv_basic(tmp_path):
     """Test DotEnv loading."""
     # Create a test .env file

@@ -122,6 +122,7 @@ class JiraQuery:
                 "updated",
                 "created",
                 "duedate",
+                "customfield_10015",
                 "description",
                 "labels",
                 "fixVersions",
@@ -156,6 +157,7 @@ class JiraQuery:
                 "updated",
                 "created",
                 "duedate",
+                "customfield_10015",
                 "labels",
             ]
 
