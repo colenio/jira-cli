@@ -1,9 +1,18 @@
 """CLI tests for the `version` command group (fix versions / milestones)."""
 
+from importlib.metadata import version
+
 from click.testing import CliRunner
 
 import jira_cli.cli as cli_module
 import jira_cli.commands.version as version_module
+
+
+def test_cli_version_matches_installed_distribution():
+    result = CliRunner().invoke(cli_module.cli, ["--version"])
+
+    assert result.exit_code == 0
+    assert version("colenio-jira-cli") in result.output
 
 
 class DummyClient:
