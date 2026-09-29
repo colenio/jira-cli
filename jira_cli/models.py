@@ -103,11 +103,11 @@ class IssueRow(BaseModel):
         return mapping.get(normalized, "📄")
 
     @staticmethod
-    def from_jira_issue(issue: JiraIssue) -> "IssueRow":
+    def from_jira_issue(issue: JiraIssue, start_date_field: str = "") -> "IssueRow":
         """Convert Jira issue to flattened row."""
         fields = issue.fields
         extra_fields = fields.model_extra or {}
-        start_date = fields.start_date or extra_fields.get("customfield_10015") or extra_fields.get("startDate") or ""
+        start_date = fields.start_date or extra_fields.get(start_date_field) or extra_fields.get("startDate") or ""
         due_date = fields.due_date or extra_fields.get("dueDate") or extra_fields.get("duedate") or ""
 
         status = ""

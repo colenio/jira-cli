@@ -81,6 +81,22 @@ jira validate --provider jira --project PROJ
 jira validate --provider github --repo owner/repository
 ```
 
+For GitLab, set `GITLAB_TOKEN` to a personal, project, or group access token with the `api` scope,
+and set `GITLAB_PROJECT` to a project path or numeric ID. `GITLAB_URL` is optional and defaults to
+`https://gitlab.com`. Start the TUI with `jira tui --provider gitlab --project group/project`.
+The `api` scope is sufficient; no additional user scope is required.
+
+The TUI can display the authenticated user's email from GitLab's `GET /user` response. Other
+project members expose only their public email addresses to regular users; private member emails
+are not made visible by adding ordinary token scopes. On self-managed instances, an administrator
+can optionally set `GITLAB_ADMIN_TOKEN` to a separate admin PAT; the provider then reads private
+member emails through the admin Users API and falls back to public emails if that lookup is denied.
+The admin token must belong to an administrator. Current GitLab documentation calls the additional
+self-managed scope `admin_mode` (alongside `api`); some older self-managed versions may expose the
+legacy `admin_api` scope instead. Admin Mode must also be enabled where required. See the
+[GitLab access token scopes](https://docs.gitlab.com/security/tokens/access_token_scopes/) and
+[Users API](https://docs.gitlab.com/api/users/) documentation.
+
 Use `jira tui --demo` for a credential-free local run.
 
 ## Development

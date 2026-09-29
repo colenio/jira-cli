@@ -10,6 +10,7 @@ import click
 from .base import IssueTrackerProvider, ProviderContext
 from .demo import DemoProvider
 from .github import GITHUB_PROVIDER_DESCRIPTOR, GitHubProvider
+from .gitlab import GITLAB_PROVIDER_DESCRIPTOR, GitLabProvider
 from .jira import JIRA_PROVIDER_DESCRIPTOR, JiraProvider
 
 
@@ -72,6 +73,16 @@ def create_provider(
         if repo and "/" in repo:
             default_owner = repo.split("/", 1)[0]
         return GitHubProvider(target=context.target, token=token, default_owner=default_owner)
+    if context.provider == "gitlab":
+        token = os.environ.get("GITLAB_TOKEN", "")
+        if not token:
+            raise ValueError("Missing GitLab token. Set GITLAB_TOKEN with the api scope")
+        return GitLabProvider(
+            target=context.target,
+            token=token,
+            url=os.environ.get("GITLAB_URL") or "https://gitlab.com",
+            admin_token=os.environ.get("GITLAB_ADMIN_TOKEN") or None,
+        )
     if context.provider == "jira":
         base_url = os.environ.get("JIRA_URL") or os.environ.get("JIRA_BASE_URL")
         email = os.environ.get("JIRA_EMAIL") or os.environ.get("JIRA_USER")
@@ -91,7 +102,11 @@ def create_provider(
 
 def format_validation_failure(context: ProviderContext, reason: str) -> str:
     """Format a provider validation failure with actionable token guidance."""
-    descriptors = {"jira": JIRA_PROVIDER_DESCRIPTOR, "github": GITHUB_PROVIDER_DESCRIPTOR}
+    descriptors = {
+        "jira": JIRA_PROVIDER_DESCRIPTOR,
+        "github": GITHUB_PROVIDER_DESCRIPTOR,
+        "gitlab": GITLAB_PROVIDER_DESCRIPTOR,
+    }
     descriptor = descriptors.get(context.provider)
     if not descriptor:
         return f"{context.label} validation failed: {reason}"
@@ -158,7 +173,7 @@ def create_or_exit(
     except ValueError as error:
         click.echo(str(error), err=True)
         click.echo(
-            "Configure Jira in .env/local.env, GitHub via GH_TOKEN/gh auth, or use --provider demo / --demo.",
+            "Configure Jira, GitHub via GH_TOKEN/gh auth, GitLab via GITLAB_TOKEN, or use --provider demo / --demo.",
             err=True,
         )
         raise SystemExit(1) from error

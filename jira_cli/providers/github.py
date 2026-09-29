@@ -831,6 +831,20 @@ class GitHubProjectProvider:
         """Return empty list for versions on board."""
         return []
 
+    def list_timeline_items(self, project_key: str):
+        """Return repository milestones represented on this Project V2 board."""
+        items = []
+        for repository in self.list_issue_repositories():
+            if "/" not in repository:
+                continue
+            owner, repo_name = repository.split("/", 1)
+            items.extend(_github_milestone_timeline_items(self._github, owner, repo_name))
+        return items
+
+    def list_timeline_markers(self, project_key: str) -> list:
+        """Project milestones are timeline items, not duplicate release markers."""
+        return []
+
     def list_assignable_users(self, project_key: str, max_results: int = 50) -> list[dict]:
         """Return assignees from org members, project repos, items, and current user."""
         users_dict: dict[str, dict] = {}
@@ -983,6 +997,22 @@ class GitHubProvider:
         if getattr(self, "_delegate", None):
             return self._delegate.describe()
         return GITHUB_PROVIDER_DESCRIPTOR
+
+    def list_resource(self, kind: str, project_key: str) -> list[dict]:
+        """List provider-specific catalog resources when supported."""
+        if self._delegate and hasattr(self._delegate, "list_resource"):
+            return self._delegate.list_resource(kind, project_key)
+        raise ValueError(f"GitHub provider does not expose resource '{kind}'")
+
+    def list_timeline_items(self, project_key: str):
+        """Return repository milestones as provider-neutral planning items."""
+        if self._delegate:
+            return self._delegate.list_timeline_items(project_key)
+        return _github_milestone_timeline_items(self._github, self._owner, self._repo_name)
+
+    def list_timeline_markers(self, project_key: str) -> list:
+        """GitHub milestones are shown as planning items, not duplicate markers."""
+        return self._delegate.list_timeline_markers(project_key) if self._delegate else []
 
     def get_issue_url(self, key: str) -> str:
         """Return the web URL for an issue key."""
@@ -1500,6 +1530,62 @@ def _milestone_dict(milestone) -> dict:
         "released": getattr(milestone, "state", "open") == "closed",
         "archived": False,
     }
+
+
+def _github_milestone_timeline_items(github: GitHub, owner: str, repo_name: str) -> list:
+    """Build milestone ranges from their earliest assigned issue through due date."""
+    from datetime import date
+
+    from jira_cli.timeline import TimelineItem
+
+    milestones = github.rest.paginate(
+        github.rest.issues.list_milestones,
+        owner=owner,
+        repo=repo_name,
+        state="all",
+        per_page=100,
+    )
+    items = []
+    for milestone in milestones:
+        due_date = _timeline_date(getattr(milestone, "due_on", None))
+        if due_date is None:
+            continue
+        issues = github.rest.paginate(
+            github.rest.issues.list_for_repo,
+            owner=owner,
+            repo=repo_name,
+            milestone=milestone.number,
+            state="all",
+            per_page=100,
+        )
+        starts = [_timeline_date(getattr(issue, "created_at", None)) for issue in issues]
+        start_date = min((value for value in starts if value is not None), default=due_date)
+        items.append(
+            TimelineItem(
+                key=f"{repo_name}#M{milestone.number}",
+                title=milestone.title,
+                start=start_date,
+                end=due_date,
+                status=getattr(milestone, "state", ""),
+                issue_type="Milestone",
+                target_url=str(getattr(milestone, "html_url", "") or ""),
+            )
+        )
+    return sorted(items, key=lambda item: (item.start or date.max, item.key))
+
+
+def _timeline_date(value):
+    """Normalize a date or datetime-like API value to a date."""
+    from datetime import date
+
+    if isinstance(value, date):
+        return value
+    if value:
+        try:
+            return date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
+    return None
 
 
 def _label_dict(label, issue_count: int | str = "") -> dict:

@@ -5,12 +5,12 @@ import click
 
 @click.command(name="tui")
 @click.option("--project", "project", "-p", default="", help="Jira project key or GitHub Project (owner/number); defaults to JIRA_PROJECT/JIRA_PROJECT_KEY")
-@click.option("--provider", "provider", default="", help="Provider context to use (jira, github, github-project, or demo)")
+@click.option("--provider", "provider", default="", help="Provider context to use (jira, github, gitlab, or demo)")
 @click.option("--repo", "repository", "-R", default="", help="GitHub repository target (owner/name), like gh -R")
 @click.option("--github-project", "gh_project", "-P", default="", help="GitHub Project V2 target (owner/number, e.g. colenio/21)")
 @click.option("--demo", is_flag=True, help="Launch the TUI with synthetic demo data for safe screenshots")
 def launch_tui(project: str, provider: str, repository: str, gh_project: str, demo: bool) -> None:
-    """Launch interactive TUI (Terminal User Interface) for Jira/GitHub issue management."""
+    """Launch interactive TUI for Jira, GitHub, GitLab, or demo issue management."""
     try:
         from jira_cli.providers.registry import ProviderRegistry
         from jira_cli.tui.app import run_tui

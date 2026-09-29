@@ -333,7 +333,7 @@ def _to_jira_issue(issue: dict) -> JiraIssue:
             updated=issue["updated"],
             labels=issue["labels"],
             description=issue.get("description"),
-            customfield_10015=issue.get("startDate"),
+            startDate=issue.get("startDate"),
             duedate=issue.get("dueDate"),
             reporter=(
                 {"displayName": issue["reporter"]}

@@ -125,7 +125,9 @@ class WorkflowControllerMixin:
         self.query_one("#mode_context", Label).update("MODE: COMMAND (INPUT)")
         query_input = self.query_one("#query_input", Input)
         query_input.suggester = self.command_suggester
-        self._show_query_input("table/board/users/labels/versions | actions/create/edit/related | status= | assignee= | label= | clear")
+        resource_examples = ", ".join(self._provider_resource_kinds())
+        placeholder = f"Commands: {resource_examples} | type to autocomplete" if resource_examples else "Commands: users/labels/versions | type to autocomplete"
+        self._show_query_input(placeholder)
 
     async def _submit_command(self, expression: str) -> None:
         verb, arg = parse_command(expression)
@@ -179,6 +181,8 @@ class WorkflowControllerMixin:
             return
         if verb in {"versions", "milestones"}:
             self._show_versions("Milestones" if verb == "milestones" else "Versions"); return
+        if self.client.describe().resource(verb) and hasattr(self.client, "list_resource"):
+            self._show_provider_resource(verb); return
         if verb == "order":
             if not arg: self.notify("Usage: order=<field> [asc|desc]", severity="warning"); return
             if arg.strip().lower() == "clear":

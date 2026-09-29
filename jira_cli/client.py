@@ -109,7 +109,10 @@ class JiraClient:
         if self.dry_run:
             return {}
 
-        return self._jira.myself()
+        user = self._jira.myself()
+        if user.get("accountId") and not user.get("emailAddress"):
+            user["emailAddress"] = self.email
+        return user
 
     def _search_assignable_users(self, project_key: str, query: Optional[str], max_results: int) -> list[dict]:
         """
@@ -356,6 +359,12 @@ class JiraClient:
             print(f"[dry-run] PUT /issues/{key} | assignee={assignee_key}")
             return
 
+        if assignee_key.strip().casefold() == "me":
+            account_id = self.get_current_user().get("accountId")
+            if not account_id:
+                raise ValueError("Could not resolve current Jira user account ID")
+            self._jira.issue(key).update(fields={"assignee": {"accountId": account_id}})
+            return
         self._jira.assign_issue(key, assignee_key)
 
     def create_issue(

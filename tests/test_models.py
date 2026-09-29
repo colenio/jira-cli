@@ -22,7 +22,7 @@ def test_issue_row_from_jira_issue():
         ),
     )
 
-    row = IssueRow.from_jira_issue(issue)
+    row = IssueRow.from_jira_issue(issue, start_date_field="customfield_10015")
 
     assert row.key == "TEST-123"
     assert row.summary == "Fix database query"
@@ -62,7 +62,7 @@ def test_issue_row_reads_jira_custom_start_date():
         ),
     )
 
-    row = IssueRow.from_jira_issue(issue)
+    row = IssueRow.from_jira_issue(issue, start_date_field="customfield_10015")
 
     assert row.start_date == "2026-09-01"
     assert row.due_date == "2026-09-30"

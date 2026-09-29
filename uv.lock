@@ -229,7 +229,7 @@ wheels = [
 
 [[package]]
 name = "colenio-jira-cli"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -238,6 +238,7 @@ dependencies = [
     { name = "md-adf" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "python-gitlab" },
     { name = "rich" },
     { name = "tabulate" },
     { name = "textual" },
@@ -275,6 +276,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-gitlab", specifier = ">=5.6.0,<7" },
     { name = "radon", marker = "extra == 'local-dev'", specifier = ">=6.0.1" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'local-dev'", specifier = ">=0.2.0" },
@@ -1174,6 +1176,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz", hash = "sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3", size = 50135 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0b/d7/1959b9648791274998a9c3526f6d0ec8fd2233e4d4acce81bbae76b44b2a/python_dotenv-1.2.2-py3-none-any.whl", hash = "sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a", size = 22101 },
+]
+
+[[package]]
+name = "python-gitlab"
+version = "6.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "requests-toolbelt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/bd/b30f1d3b303cb5d3c72e2d57a847d699e8573cbdfd67ece5f1795e49da1c/python_gitlab-6.5.0.tar.gz", hash = "sha256:97553652d94b02de343e9ca92782239aa2b5f6594c5482331a9490d9d5e8737d", size = 400591 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/bd/b0d440685fbcafee462bed793a74aea88541887c4c30556a55ac64914b8d/python_gitlab-6.5.0-py3-none-any.whl", hash = "sha256:494e1e8e5edd15286eaf7c286f3a06652688f1ee20a49e2a0218ddc5cc475e32", size = 144419 },
 ]
 
 [[package]]
