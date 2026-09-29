@@ -9,13 +9,25 @@ from jira_cli.query import JiraQuery
 from jira_cli.quick_filters import normalize_for_match
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget
-from jira_cli.tui.features.query.service import filter_issues
+from jira_cli.tui.features.query.service import filter_issues, run_remote_query
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget
+from jira_cli.tui.features.resource_table import ProviderResourceDetail, ProviderResourceTable
 
 
 class QueryControllerMixin:
     """Own remote query result loading and local resource filtering."""
+
+    def _run_remote_query(self) -> list[IssueRow]:
+        """Run the currently active remote query source."""
+        return run_remote_query(
+            query=self.query,
+            project_key=self.project_key,
+            query_mode=self.query_mode,
+            query_expression=self.query_expression,
+            order_by=self.order_by,
+            max_results=100,
+        )
 
     async def _run_jql_context(self, jql: str, context_label: str) -> None:
         """Execute a provider query and set it as the active remote context."""
@@ -43,6 +55,8 @@ class QueryControllerMixin:
         self.update_issue_detail(selected_issue)
         self._prefetch_comments_for_issue(selected_issue)
         self._children_prefetch.prefetch(selected_issue)
+        if self.timeline_visible:
+            self.query_one("#issue_timeline").update_items(self._timeline_items())
 
     async def _apply_filter(self, filter_text: str) -> None:
         """Apply the live filter to the active resource view."""
@@ -80,6 +94,18 @@ class QueryControllerMixin:
             ]
             selected = self.query_one("#label_table", LabelTableWidget).replace_rows(labels)
             self.query_one("#label_detail", LabelDetailWidget).update_label(selected)
+            return
+        if self.client.describe().resource(self.active_kind):
+            fields = self.provider_resource_fields
+            rows = [
+                row for row in self.provider_resource_rows
+                if not query or any(query in normalize_for_match(str(row.get(field, ""))) for field in fields)
+            ]
+            self.query_one("#provider_resource_table", ProviderResourceTable).replace_resource(self.active_kind, fields, rows)
+            self.query_one("#provider_resource_detail", ProviderResourceDetail).update_resource(
+                rows[0] if rows else None,
+                fields,
+            )
             return
 
         table = self.query_one("#issue_table", IssueTableWidget)

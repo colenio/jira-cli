@@ -7,6 +7,7 @@ from typing import Optional, Protocol
 from pydantic import BaseModel, ConfigDict
 
 from jira_cli.models import JiraSearchResult
+from jira_cli.timeline import TimelineItem
 
 
 class FilterDescriptor(BaseModel):
@@ -89,6 +90,14 @@ class IssueTrackerProvider(Protocol):
 
     def describe(self) -> ProviderDescriptor:
         """Describe provider resources, filters, sorts, and actions."""
+        ...
+
+    def list_resource(self, kind: str, project_key: str) -> list[dict]:
+        """List records for a provider-declared catalog resource."""
+        ...
+
+    def list_timeline_items(self, project_key: str) -> list[TimelineItem]:
+        """Return provider-selected planning items for the timeline view."""
         ...
 
     def get_issue_url(self, key: str) -> str:

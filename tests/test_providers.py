@@ -16,6 +16,218 @@ def test_jira_provider_describes_issue_filters_and_actions() -> None:
     assert {item.name for item in issues.actions} >= {"comment", "assign", "transition"}
 
 
+def test_jira_provider_describes_components_and_sprints() -> None:
+    components = JIRA_PROVIDER_DESCRIPTOR.resource("components")
+    sprints = JIRA_PROVIDER_DESCRIPTOR.resource("sprints")
+
+    assert components is not None
+    assert {"name", "description", "lead"} <= set(components.fields)
+    assert sprints is not None
+    assert {"name", "state", "startDate", "endDate", "board"} <= set(sprints.fields)
+
+
+def test_jira_sprint_listing_skips_boards_without_sprints() -> None:
+    from jira.exceptions import JIRAError
+    from jira_cli.providers.jira import JiraProvider
+
+    kanban = SimpleNamespace(id=1, name="Kanban")
+    scrum = SimpleNamespace(id=2, name="Scrum")
+    sprint = SimpleNamespace(id=7, raw={"name": "Sprint 1", "state": "active"})
+
+    def list_sprints(board_id, **kwargs):
+        if board_id == kanban.id:
+            raise JIRAError(text="The board does not support sprints")
+        return [sprint]
+
+    provider = JiraProvider.__new__(JiraProvider)
+    provider._jira = SimpleNamespace(
+        boards=lambda **kwargs: [kanban, scrum],
+        sprints=list_sprints,
+    )
+
+    assert provider.list_resource("sprints", "TIST") == [
+        {"name": "Sprint 1", "state": "active", "board": "Scrum"}
+    ]
+
+
+def test_jira_epic_sprint_assignments_are_derived_from_children() -> None:
+    from jira_cli.providers.jira import JiraProvider
+
+    child = SimpleNamespace(
+        fields=SimpleNamespace(
+            parent={"key": "TIST-199"},
+            model_extra={"customfield_10020": [{"id": 6072}, {"id": 6073}, {"id": 6072}]},
+        )
+    )
+    calls = []
+    provider = JiraProvider.__new__(JiraProvider)
+    provider._sprint_field_id = None
+    provider._jira = SimpleNamespace(
+        fields=lambda: [
+            {"id": "customfield_10030", "name": "Sprint", "schema": {"custom": "legacy:sprint"}},
+            {
+                "id": "customfield_10020",
+                "name": "Sprint",
+                "schema": {"custom": "com.pyxis.greenhopper.jira:gh-sprint"},
+            },
+        ]
+    )
+    provider.search = lambda jql, **kwargs: calls.append((jql, kwargs)) or SimpleNamespace(issues=[child], total=1)
+
+    assert provider.list_epic_sprint_assignments("TIST") == {"TIST-199": ["6072", "6073"]}
+    assert calls[0][1]["fields"] == ["summary", "parent", "customfield_10020"]
+
+
+def test_github_milestones_are_provider_neutral_timeline_items() -> None:
+    from jira_cli.providers.github import _github_milestone_timeline_items
+
+    milestone = SimpleNamespace(
+        number=4,
+        title="0.7.0",
+        state="open",
+        due_on="2026-12-31T23:59:59Z",
+        html_url="https://github.com/acme/app/milestone/4",
+    )
+    issue = SimpleNamespace(created_at="2026-09-10T12:00:00Z")
+
+    class Rest:
+        class Issues:
+            list_milestones = object()
+            list_for_repo = object()
+
+        issues = Issues()
+
+        def paginate(self, endpoint, **kwargs):
+            return [milestone] if endpoint is self.issues.list_milestones else [issue]
+
+    items = _github_milestone_timeline_items(SimpleNamespace(rest=Rest()), "acme", "app")
+
+    assert len(items) == 1
+    assert items[0].key == "app#M4"
+    assert items[0].issue_type == "Milestone"
+    assert items[0].start.isoformat() == "2026-09-10"
+    assert items[0].end.isoformat() == "2026-12-31"
+    assert items[0].target_url.endswith("/milestone/4")
+
+
+def test_gitlab_context_resolves_project_path() -> None:
+    from jira_cli.providers.registry import gitlab_context
+
+    context = gitlab_context("/group/subgroup/project/")
+
+    assert context.provider == "gitlab"
+    assert context.target == "group/subgroup/project"
+    assert context.label == "GitLab / group/subgroup/project"
+
+
+def test_gitlab_validation_reports_missing_token(monkeypatch) -> None:
+    monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+    context = ProviderRegistry(load_env=False).resolve_context(provider="gitlab", project="group/project")
+
+    warning = ProviderRegistry(load_env=False).validate_context(context)
+
+    assert warning is not None
+    assert "GITLAB_TOKEN" in warning
+
+
+def test_gitlab_timeline_items_use_milestone_dates_and_issues() -> None:
+    from jira_cli.providers.gitlab import GitLabProvider
+
+    milestone = SimpleNamespace(
+        id=17,
+        title="Release 17",
+        state="active",
+        start_date=None,
+        due_date="2026-12-01",
+        web_url="https://gitlab.com/group/project/-/milestones/17",
+    )
+    issue = SimpleNamespace(created_at="2026-08-15T12:00:00Z")
+    project = SimpleNamespace(
+        milestones=SimpleNamespace(list=lambda **kwargs: [milestone]),
+        issues=SimpleNamespace(list=lambda **kwargs: [issue]),
+    )
+    provider = GitLabProvider.__new__(GitLabProvider)
+    provider.project = project
+    provider.project_key = "group/project"
+
+    items = provider.list_timeline_items("group/project")
+
+    assert len(items) == 1
+    assert items[0].key == "M17"
+    assert items[0].issue_type == "Milestone"
+    assert items[0].start.isoformat() == "2026-08-15"
+    assert items[0].end.isoformat() == "2026-12-01"
+
+
+def test_gitlab_user_email_uses_private_email_only_for_current_user() -> None:
+    from jira_cli.providers.gitlab import GitLabProvider
+
+    current = SimpleNamespace(id=1, username="me", name="Current User", email="me@example.com", public_email="")
+    members = [
+        SimpleNamespace(id=1, username="me", name="Current User", public_email=""),
+        SimpleNamespace(id=2, username="other", name="Other User", public_email="other@example.com"),
+        SimpleNamespace(id=3, username="private", name="Private User", public_email=""),
+    ]
+    provider = GitLabProvider.__new__(GitLabProvider)
+    provider._gitlab = SimpleNamespace(user=current, auth=lambda: None)
+    provider._gitlab_admin = None
+    provider._admin_email_cache = {}
+    provider.project = SimpleNamespace(members_all=SimpleNamespace(list=lambda **kwargs: members))
+
+    assert provider.get_current_user()["emailAddress"] == "me@example.com"
+    users = provider.list_assignable_users("group/project")
+    assert users[0]["emailAddress"] == "me@example.com"
+    assert users[1]["emailAddress"] == "other@example.com"
+    assert users[2]["emailAddress"] == "-"
+
+
+def test_gitlab_admin_token_opt_in_resolves_private_member_email() -> None:
+    from jira_cli.providers.gitlab import GitLabProvider
+
+    current = SimpleNamespace(id=1, username="me", name="Current User", email="me@example.com", public_email="")
+    members = [
+        SimpleNamespace(id=1, username="me", name="Current User", public_email=""),
+        SimpleNamespace(id=2, username="other", name="Other User", public_email=""),
+    ]
+    admin_users = SimpleNamespace(users=SimpleNamespace(get=lambda user_id: SimpleNamespace(email="private@example.com")))
+    provider = GitLabProvider.__new__(GitLabProvider)
+    provider._gitlab = SimpleNamespace(user=current, auth=lambda: None)
+    provider._gitlab_admin = admin_users
+    provider._admin_email_cache = {}
+    provider.project = SimpleNamespace(members_all=SimpleNamespace(list=lambda **kwargs: members))
+
+    users = provider.list_assignable_users("group/project")
+
+    assert users[0]["emailAddress"] == "me@example.com"
+    assert users[1]["emailAddress"] == "private@example.com"
+
+
+def test_jira_start_date_field_prefers_standard_cloud_field(monkeypatch) -> None:
+    from jira_cli.providers.jira import JiraProvider
+
+    monkeypatch.delenv("JIRA_START_DATE_FIELD", raising=False)
+    provider = JiraProvider.__new__(JiraProvider)
+    provider._start_date_field = None
+    provider._jira = SimpleNamespace(
+        fields=lambda: [
+            {"id": "customfield_10040", "name": "Start Date", "schema": {"type": "date"}},
+            {"id": "customfield_10015", "name": "Start date", "schema": {"type": "date"}},
+        ]
+    )
+
+    assert provider.start_date_field() == "customfield_10015"
+
+
+def test_jira_start_date_field_honors_override(monkeypatch) -> None:
+    from jira_cli.providers.jira import JiraProvider
+
+    monkeypatch.setenv("JIRA_START_DATE_FIELD", "customfield_12345")
+    provider = JiraProvider.__new__(JiraProvider)
+    provider._start_date_field = None
+
+    assert provider.start_date_field() == "customfield_12345"
+
+
 def test_demo_provider_describes_same_core_resources() -> None:
     descriptor = DemoProvider().describe()
 

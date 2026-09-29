@@ -64,6 +64,16 @@ def github_project_context(target: str) -> ProviderContext:
     return github_context(target)
 
 
+def gitlab_context(target: str) -> ProviderContext:
+    """Build a GitLab project context from a namespace/project path or numeric ID."""
+    cleaned = target.strip("/")
+    if not cleaned:
+        raise ValueError("Missing GitLab project. Pass --project or set GITLAB_PROJECT")
+    return ProviderContext(
+        name=f"gitlab:{cleaned}", provider="gitlab", target=cleaned, label=f"GitLab / {cleaned}"
+    )
+
+
 class ProviderRegistry:
     """Discover and instantiate configured provider contexts."""
 
@@ -87,6 +97,10 @@ class ProviderRegistry:
                 contexts.append(jira_context(project))
             except ValueError:
                 pass
+
+        gitlab_project = os.environ.get("GITLAB_PROJECT")
+        if gitlab_project and os.environ.get("GITLAB_TOKEN"):
+            contexts.append(gitlab_context(gitlab_project))
 
         # Deduplicate contexts by target
         seen_targets = set()
@@ -126,6 +140,11 @@ class ProviderRegistry:
             return github_context(target)
         if requested == "jira":
             return jira_context(project)
+        if requested == "gitlab":
+            target = project or os.environ.get("GITLAB_PROJECT", "")
+            if not target:
+                raise ValueError("Missing GitLab project. Pass -p/--project or set GITLAB_PROJECT")
+            return gitlab_context(target)
 
         if not requested:
             real_contexts = [c for c in self.available_contexts(project) if c.provider != "demo"]
@@ -173,7 +192,7 @@ class ProviderRegistry:
 
             return jira_context(project)
 
-        raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, jira")
+        raise ValueError(f"Unknown provider '{provider}'. Available providers: demo, github, gitlab, jira")
 
     def create_provider(self, context: ProviderContext) -> IssueTrackerProvider:
         """Instantiate a provider through the shared provider lifecycle."""

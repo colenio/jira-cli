@@ -6,6 +6,7 @@ from jira_cli.quick_filters import normalize_for_match
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget, list_project_labels
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, search_project_users
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget, list_project_versions
+from jira_cli.tui.features.resource_table import ProviderResourceDetail, ProviderResourceTable
 
 
 class ResourceViewsMixin:
@@ -13,6 +14,29 @@ class ResourceViewsMixin:
 
     def _show_current_user(self) -> None:
         self._replace_users([self.client.get_current_user()], "Source: current user")
+
+    def _show_provider_resource(self, kind: str) -> None:
+        """Load and display any provider-declared read-only catalog resource."""
+        descriptor = self.client.describe().resource(kind)
+        if descriptor is None or not hasattr(self.client, "list_resource"):
+            self.notify(f"Resource '{kind}' is not supported by this provider", severity="warning")
+            return
+        try:
+            rows = self.client.list_resource(kind, self.project_key)
+        except Exception as error:
+            self.notify(f"Could not load {kind}: {error}", severity="error")
+            return
+        self.provider_resource_rows = rows
+        self.provider_resource_fields = descriptor.fields
+        self.query_one("#provider_resource_table", ProviderResourceTable).replace_resource(
+            kind, descriptor.fields, rows
+        )
+        self.query_one("#provider_resource_detail", ProviderResourceDetail).update_resource(
+            rows[0] if rows else None,
+            descriptor.fields,
+        )
+        self._show_resource(kind)
+        self.query_one("#query_context").update(f"Source: {kind} in {self.project_key}")
 
     def _show_assignable_users(self) -> None:
         users = sorted(

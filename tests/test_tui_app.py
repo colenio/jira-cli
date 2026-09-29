@@ -1,10 +1,10 @@
 """Tests for the interactive Jira TUI (JiraApp), driven headlessly via Textual's pilot."""
 
 import pytest
-from textual.widgets import Input
+from textual.widgets import DataTable, Input
 
 from jira_cli.models import IssueRow
-from jira_cli.providers import ProviderContext, ProviderDescriptor
+from jira_cli.providers import ProviderContext, ProviderDescriptor, ResourceDescriptor
 from jira_cli.quick_filters import normalize_for_match
 from jira_cli.tui.app import JiraApp
 from jira_cli.tui.features.board.service import group_by_status
@@ -188,6 +188,88 @@ async def test_topbar_user_does_not_overlap_clock(app):
         assert user.region.x + user.region.width <= clock.region.x
 
 
+async def test_provider_declared_resource_opens_in_generic_table(sample_issues):
+    class ResourceClient(FakeJiraClient):
+        def describe(self) -> ProviderDescriptor:
+            return ProviderDescriptor(
+                name="fake",
+                resources=(
+                    ResourceDescriptor(kind="components", fields=("name", "lead")),
+                    ResourceDescriptor(kind="sprints", fields=("name", "state", "board")),
+                ),
+            )
+
+        def list_resource(self, kind: str, project_key: str) -> list[dict]:
+            assert project_key == "A"
+            if kind == "components":
+                return [
+                    {"name": "Platform", "lead": "Ada"},
+                    {"name": "Storage", "lead": "Lin"},
+                ]
+            return [
+                {"name": "Active Sprint", "state": "active", "board": "Scrum"},
+                {"name": "Closed Sprint", "state": "closed", "board": "Scrum"},
+            ]
+
+    resource_app = JiraApp(ResourceClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    resource_app._children_prefetch.prefetch = lambda issue: None
+    async with resource_app.run_test() as pilot:
+        await resource_app._submit_command("components")
+        await pilot.pause()
+
+        table = resource_app.query_one("#provider_resource_table")
+        detail = resource_app.query_one("#provider_resource_detail")
+        workspace = resource_app.query_one("#issue_workspace")
+        assert resource_app.active_kind == "components"
+        assert table.display
+        assert detail.display
+        assert table.region.y == workspace.region.y
+        assert detail.region.y == workspace.region.y
+        assert detail.region.x > table.region.x
+        assert table.resource_rows[0]["name"] == "Platform"
+        assert detail.resource["name"] == "Platform"
+        assert resource_app.query_one("#resource-tab-components").label == "Components"
+        resource_app.action_focus_command()
+        assert "components" in resource_app.query_one("#query_input").placeholder
+        assert await resource_app.command_suggester.get_suggestion("comp") == "components"
+        resource_app._hide_query_input()
+
+        await pilot.press("down")
+        await pilot.pause()
+        assert detail.resource["name"] == "Storage"
+
+        await pilot.click("#resource-tab-sprints")
+        await pilot.pause()
+        assert resource_app.active_kind == "sprints"
+        assert len(table.resource_rows) == 2
+        await resource_app._apply_filter("active")
+        assert [row["name"] for row in table.resource_rows] == ["Active Sprint"]
+        assert detail.resource["state"] == "active"
+
+
+async def test_users_versions_and_labels_use_horizontal_master_detail(app):
+    app._children_prefetch.prefetch = lambda issue: None
+    views = {
+        "users": ("user_table", "user_detail"),
+        "versions": ("version_table", "version_detail"),
+        "labels": ("label_table", "label_detail"),
+    }
+
+    async with app.run_test() as pilot:
+        for kind, (table_id, detail_id) in views.items():
+            await pilot.click(f"#resource-tab-{kind}")
+            await pilot.pause()
+
+            table = app.query_one(f"#{table_id}")
+            detail = app.query_one(f"#{detail_id}")
+            workspace = app.query_one("#issue_workspace")
+            assert table.display
+            assert detail.display
+            assert table.region.y == workspace.region.y
+            assert detail.region.y == workspace.region.y
+            assert detail.region.x > table.region.x
+
+
 def test_provider_query_placeholder_uses_github_example(sample_issues):
     client = FakeJiraClient()
     app = JiraApp(
@@ -249,6 +331,134 @@ async def test_board_widget_focus_restored_after_command(sample_issues):
         selected_after = app._selected_issue()
         assert selected_after is not None
         assert selected_after.key == selected_before.key
+
+
+async def test_timeline_toggle_shows_timeline_view(app):
+    async with app.run_test() as pilot:
+        await pilot.press("g")
+        assert app.timeline_visible is True
+        assert app.query_one("#issue_timeline").display is True
+        assert app.query_one("#issue_table").display is False
+        await pilot.press("g")
+        assert app.timeline_visible is False
+
+
+async def test_demo_provider_renders_epic_timeline_bars():
+    from jira_cli.demo import DEMO_PROJECT_KEY
+    from jira_cli.providers.demo import DemoProvider
+    from jira_cli.query import JiraQuery
+
+    client = DemoProvider()
+    issues = JiraQuery(client).search_project(DEMO_PROJECT_KEY, max_results=100)
+    demo_app = JiraApp(client, DEMO_PROJECT_KEY, issues, current_user_display_name="Marcel Körtgen")
+    demo_app._children_prefetch.prefetch = lambda issue: None
+
+    async with demo_app.run_test() as pilot:
+        await pilot.press("g")
+        await pilot.pause()
+
+        timeline = demo_app.query_one("#issue_timeline")
+        table = timeline.query_one("#timeline_table", DataTable)
+        row = table.get_row("DEMO-10")
+        assert timeline._unit == "month"
+        assert any(bool(str(cell)) for cell in row[2:])
+
+
+async def test_timeline_renders_non_epic_provider_plan_items(sample_issues):
+    from datetime import date
+
+    from jira_cli.timeline import TimelineItem
+
+    class MilestoneClient(FakeJiraClient):
+        def list_timeline_items(self, project_key: str) -> list[TimelineItem]:
+            return [
+                TimelineItem(
+                    key="repo#M4",
+                    title="0.7.0",
+                    start=date(2026, 9, 1),
+                    end=date(2026, 12, 31),
+                    issue_type="Milestone",
+                    target_url="https://github.com/acme/repo/milestone/4",
+                )
+            ]
+
+        def list_timeline_markers(self, project_key: str) -> list:
+            return []
+
+    milestone_app = JiraApp(MilestoneClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    milestone_app._children_prefetch.prefetch = lambda issue: None
+    async with milestone_app.run_test() as pilot:
+        await pilot.press("g")
+        await pilot.pause()
+
+        timeline = milestone_app.query_one("#issue_timeline")
+        table = timeline.query_one("#timeline_table", DataTable)
+        row = table.get_row("repo#M4")
+        assert row[0] == "Milestone repo#M4"
+        assert any(bool(str(cell)) for cell in row[2:])
+
+
+async def test_timeline_uses_provider_sprint_intervals(sample_issues):
+    from jira_cli.models import IssueRow
+
+    class SprintClient(FakeJiraClient):
+        def describe(self) -> ProviderDescriptor:
+            return ProviderDescriptor(
+                name="fake",
+                resources=(ResourceDescriptor(kind="sprints", fields=("name", "startDate", "endDate")),),
+            )
+
+        def list_resource(self, kind: str, project_key: str) -> list[dict]:
+            assert (kind, project_key) == ("sprints", "A")
+            return [
+                {"id": "1", "name": "Sprint 1", "state": "closed", "startDate": "2026-09-01", "endDate": "2026-09-14"},
+                {"id": "2", "name": "Sprint 2", "state": "active", "startDate": "2026-09-15", "endDate": "2026-09-28"},
+                {"id": "3", "name": "Sprint 3", "state": "future", "startDate": "2026-09-29", "endDate": "2026-10-12"},
+            ]
+
+        def list_epic_sprint_assignments(self, project_key: str) -> dict[str, list[str]]:
+            assert project_key == "A"
+            return {"A-EPIC": ["2"]}
+
+    epic = IssueRow(
+        key="A-EPIC",
+        summary="Timeline Epic",
+        issue_type="Epic",
+    )
+    sprint_app = JiraApp(SprintClient(), "A", [epic], current_user_display_name="Marcel Körtgen")
+    sprint_app._children_prefetch.prefetch = lambda issue: None
+    async with sprint_app.run_test() as pilot:
+        await pilot.press("g")
+        await pilot.pause()
+
+        timeline = sprint_app.query_one("#issue_timeline")
+        assert timeline._unit == "sprint"
+        assert [period.label for period in timeline._periods] == ["Sprint 2", "Sprint 3"]
+        row = timeline.query_one("#timeline_table", DataTable).get_row("A-EPIC")
+        assert [bool(str(cell)) for cell in row[2:]] == [True, False]
+        timeline.action_cycle_granularity()
+        assert timeline._unit == "week"
+        timeline.set_granularity("sprint")
+        assert timeline._unit == "sprint"
+
+
+async def test_timeline_sprint_scale_falls_back_without_provider_sprints(sample_issues):
+    from jira_cli.models import IssueRow
+
+    epic = IssueRow(
+        key="A-EPIC",
+        summary="Timeline Epic",
+        issue_type="Epic",
+        start_date="2026-09-10",
+        due_date="2026-10-02",
+    )
+    fallback_app = JiraApp(FakeJiraClient(), "A", [epic], current_user_display_name="Marcel Körtgen")
+    fallback_app._children_prefetch.prefetch = lambda issue: None
+    async with fallback_app.run_test() as pilot:
+        await pilot.press("g")
+        timeline = fallback_app.query_one("#issue_timeline")
+        timeline.set_granularity("sprint")
+        assert timeline._unit == "week"
 
 
 async def test_edit_title_updates_selected_issue(sample_issues):

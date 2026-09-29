@@ -1,12 +1,12 @@
 """Main Textual application for interactive Jira issue management."""
 
+import logging
 import webbrowser
-from typing import Literal
 
 from rich.markup import escape
 from textual.app import ComposeResult, App
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Label, DataTable, Footer, Input, ListView
+from textual.widgets import Button, Label, DataTable, Footer, Input, ListView
 from textual.binding import Binding
 
 from jira_cli.models import IssueRow
@@ -19,6 +19,7 @@ from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.issues.modals import CommentModal
 from jira_cli.tui.features.issues.prefetch import IssueChildrenPrefetch
+from jira_cli.tui.features.timeline import TimelineItem, TimelineMarker, TimelineWidget
 from jira_cli.tui.controllers.resource_actions import ResourceActionsMixin
 from jira_cli.tui.controllers.view_controller import ViewControllerMixin
 from jira_cli.tui.controllers.query_controller import QueryControllerMixin
@@ -36,15 +37,16 @@ from jira_cli.tui.features.query.service import (
     run_remote_query,
 )
 from jira_cli.tui.features.query.suggester import CommandSuggester
+from jira_cli.tui.features.resource_table import ProviderResourceDetail, ProviderResourceTable
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget, search_project_users
 from jira_cli.tui.features.users.modals import UserIssuesModal
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget, list_project_versions
 from jira_cli.tui.features.workflow import JiraWorkflowFeature
 from jira_cli.tui.features.workflow.suggester import ActionSuggester
 from jira_cli.tui.header import JiraTopBar
-from jira_cli.tui.logging import configure_tui_logging
+from jira_cli.tui.logging import configure_tui_logging, tui_logger
 
-ResourceKind = Literal["issues", "users", "versions", "labels"]
+ResourceKind = str
 
 
 class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, ViewControllerMixin, QueryControllerMixin, WorkflowControllerMixin, App):
@@ -59,6 +61,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         Binding("n", "create_resource", "New", show=True),
         Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("b", "toggle_board", "Board", show=True),
+        Binding("g", "toggle_timeline", "Timeline", show=True),
         Binding("v", "open_issue", "View in Web", show=True),
         Binding("o", "open_issue", "Open in Browser", show=False),
         Binding("insert", "create_resource", "New", show=False),
@@ -74,6 +77,14 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         Binding("question_mark", "help", "Help", show=True),
         Binding("escape", "clear_filter", "Clear Filter", show=False),
     ]
+
+    def notify(self, message: str, *, title: str = "", severity="information", timeout=None, markup: bool = True) -> None:
+        """Show a toast and persist its full text when TUI logging is enabled."""
+        logger = tui_logger()
+        if logger.handlers:
+            level = {"error": logging.ERROR, "warning": logging.WARNING}.get(str(severity), logging.INFO)
+            logger.log(level, "Toast%s: %s", f" [{title}]" if title else "", message)
+        super().notify(message, title=title, severity=severity, timeout=timeout, markup=markup)
 
     CSS = """
     Screen {
@@ -109,15 +120,58 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         height: 1fr;
     }
 
+    #provider_resource_table {
+        width: 2fr;
+        height: 1fr;
+    }
+
+    #provider_resource_detail {
+        width: 1fr;
+        height: 1fr;
+    }
+
+    #resource_hint {
+        height: auto;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
+    #resource_tabs {
+        height: 3;
+        padding: 0 1;
+        background: $surface;
+    }
+
+    #resource_tabs Button {
+        min-width: 8;
+        height: 3;
+        margin: 0 1 0 0;
+    }
+
+    #resource_tabs Button.active {
+        background: $accent;
+        color: $text;
+    }
+
     #user_table {
+        width: 2fr;
         height: 1fr;
     }
 
     #version_table {
+        width: 2fr;
         height: 1fr;
     }
 
     #label_table {
+        width: 2fr;
+        height: 1fr;
+    }
+
+    #user_detail,
+    #version_detail,
+    #label_detail {
+        width: 1fr;
         height: 1fr;
     }
 
@@ -162,6 +216,10 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         self._mention_users: list[dict] | None = None
         self.versions: list[dict] = []
         self.labels: list[dict] = []
+        self.provider_resource_rows: list[dict] = []
+        self.provider_resource_fields: tuple[str, ...] = ()
+        self._timeline_sprints: list[dict] | None = None
+        self._timeline_sprint_assignments: dict[str, list[str]] | None = None
         self._labels_loaded = False
         self.query_language = self.client.describe().query_language
         self.current_user_display_name = current_user_display_name
@@ -193,6 +251,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         self.pending_transition_id = ""
         self.transition_choice_map: dict[str, str] = {}
         self.board_visible = False
+        self.timeline_visible = False
         self.comment_feature = JiraCommentFeature(client)
         self.workflow_feature = JiraWorkflowFeature(client)
         self.command_suggester = CommandSuggester(
@@ -248,6 +307,18 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         yield Label(f"[bold cyan]Jira CLI[/bold cyan] — Context: [bold yellow]{self.context.label}[/bold yellow]")
         yield Label("MODE: PROJECT", id="mode_context")
         yield Label(f"Source: project={self.project_key}", id="query_context")
+        with Horizontal(id="resource_tabs"):
+            for kind, title in (
+                ("issues", "Issues"),
+                ("board", "Board"),
+                ("timeline", "Timeline"),
+                ("users", "Users"),
+                ("versions", "Versions"),
+                ("labels", "Labels"),
+            ):
+                yield Button(title, id=f"resource-tab-{kind}", classes="resource-tab")
+            for kind in self._provider_resource_kinds():
+                yield Button(kind.title(), id=f"resource-tab-{kind}", classes="resource-tab")
         yield Input(placeholder="Find text in summary/description and press Enter", id="query_input")
         yield Input(placeholder="Filter issues (key/summary/status/assignee). Press Esc to clear", id="filter_input")
         with Horizontal(id="issue_actions_bar"):
@@ -256,13 +327,16 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
             with Vertical(id="issue_master"):
                 yield IssueTableWidget(self.issues, id="issue_table")
                 yield BoardWidget(self.issues, status_order=self._status_order(), id="issue_board")
+                yield TimelineWidget(id="issue_timeline")
             yield IssueDetailWidget(id="issue_detail")
-        yield UserTableWidget(self.users, id="user_table")
-        yield VersionTableWidget(self.versions, id="version_table")
-        yield LabelTableWidget(self.labels, id="label_table")
-        yield UserDetailWidget(id="user_detail")
-        yield VersionDetailWidget(id="version_detail")
-        yield LabelDetailWidget(id="label_detail")
+            yield ProviderResourceTable(id="provider_resource_table")
+            yield ProviderResourceDetail(id="provider_resource_detail")
+            yield UserTableWidget(self.users, id="user_table")
+            yield UserDetailWidget(id="user_detail")
+            yield VersionTableWidget(self.versions, id="version_table")
+            yield VersionDetailWidget(id="version_detail")
+            yield LabelTableWidget(self.labels, id="label_table")
+            yield LabelDetailWidget(id="label_detail")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -276,9 +350,12 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         filter_input.disabled = True
         table = self.query_one("#issue_table", IssueTableWidget)
         self.query_one("#issue_board", BoardWidget).display = False
+        self.query_one("#issue_timeline", TimelineWidget).display = False
         self.query_one("#user_table", UserTableWidget).display = False
         self.query_one("#version_table", VersionTableWidget).display = False
         self.query_one("#label_table", LabelTableWidget).display = False
+        self.query_one("#provider_resource_table", ProviderResourceTable).display = False
+        self.query_one("#provider_resource_detail", ProviderResourceDetail).display = False
         self.query_one("#user_detail", UserDetailWidget).display = False
         self.query_one("#version_detail", VersionDetailWidget).display = False
         self.query_one("#label_detail", LabelDetailWidget).display = False
@@ -287,6 +364,40 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
             self.update_issue_detail(self.issues[0])
             self._prefetch_comments_for_issue(self.issues[0])
             self._children_prefetch.prefetch(self.issues[0])
+        self._update_resource_tabs()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Navigate between issue views and provider-declared resources."""
+        button_id = event.button.id or ""
+        if not button_id.startswith("resource-tab-"):
+            return
+        kind = button_id.removeprefix("resource-tab-")
+        if kind == "issues":
+            self._show_resource("issues")
+        elif kind == "board":
+            self._show_resource("issues", board=True)
+        elif kind == "timeline":
+            if not self.timeline_visible:
+                self.action_toggle_timeline()
+        elif kind == "users":
+            self._show_assignable_users()
+        elif kind == "versions":
+            self._show_versions("Versions")
+        elif kind == "labels":
+            self._show_labels()
+        elif kind in self._provider_resource_kinds():
+            self._show_provider_resource(kind)
+
+    def _update_resource_tabs(self) -> None:
+        """Mark the current view in the top-level resource navigation."""
+        active_tab = self.active_kind
+        if active_tab == "issues":
+            active_tab = "timeline" if self.timeline_visible else "board" if self.board_visible else "issues"
+        for button in self.query_one("#resource_tabs", Horizontal).children:
+            if button.id == f"resource-tab-{active_tab}":
+                button.add_class("active")
+            else:
+                button.remove_class("active")
 
     def _selected_issue(self) -> IssueRow | None:
         """Return the selected issue from the active table or board."""
@@ -295,6 +406,136 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         if self.board_visible:
             return self.query_one("#issue_board", BoardWidget).get_selected_issue()
         return self.query_one("#issue_table", IssueTableWidget).get_selected_issue()
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Keep the provider-resource detail pane in sync with table selection."""
+        if event.data_table.id != "provider_resource_table":
+            return
+        rows = event.data_table.resource_rows
+        resource = rows[event.cursor_row] if 0 <= event.cursor_row < len(rows) else None
+        self.query_one("#provider_resource_detail", ProviderResourceDetail).update_resource(
+            resource,
+            event.data_table.fields,
+        )
+
+    def _timeline_items(self) -> list[TimelineItem]:
+        """Load plan items through the active provider's timeline capability."""
+        loader = getattr(self.client, "list_timeline_items", None)
+        if callable(loader):
+            return loader(self.project_key)
+        issue_url_loader = getattr(self.client, "get_issue_url", None)
+
+        if self._timeline_sprint_assignments is None:
+            assignment_loader = getattr(self.client, "list_epic_sprint_assignments", None)
+            try:
+                self._timeline_sprint_assignments = assignment_loader(self.project_key) if callable(assignment_loader) else {}
+            except Exception:
+                self._timeline_sprint_assignments = {}
+
+        from datetime import date
+
+        items = []
+        for issue in self.issues:
+            start = None
+            if issue.start_date:
+                try:
+                    start = date.fromisoformat(issue.start_date[:10])
+                except ValueError:
+                    pass
+            end = start
+            if issue.due_date:
+                try:
+                    end = date.fromisoformat(issue.due_date[:10])
+                except ValueError:
+                    pass
+            sprint_ids = tuple((self._timeline_sprint_assignments or {}).get(issue.key, []))
+            items.append(
+                TimelineItem(
+                    issue.key,
+                    issue.summary,
+                    start,
+                    end,
+                    issue.status,
+                    issue.parent_key,
+                    issue.issue_type,
+                    sprint_ids,
+                    issue_url_loader(issue.key) if callable(issue_url_loader) else "",
+                )
+            )
+        return items
+
+    def _timeline_markers(self) -> list[TimelineMarker]:
+        """Build colored version markers from the active project's versions."""
+        marker_loader = getattr(self.client, "list_timeline_markers", None)
+        if callable(marker_loader):
+            return marker_loader(self.project_key)
+        from datetime import date
+
+        markers = []
+        for version in self.versions:
+            release_date = str(version.get("releaseDate") or "")[:10]
+            if not release_date:
+                continue
+            try:
+                marker_date = date.fromisoformat(release_date)
+            except ValueError:
+                continue
+            color = "green" if version.get("released") else "cyan"
+            if version.get("archived"):
+                color = "dim"
+            markers.append(TimelineMarker(str(version.get("name", "Version")), marker_date, color=color))
+        return markers
+
+    def action_toggle_timeline(self) -> None:
+        """Toggle the prototype timeline view for the current issue set."""
+        if self.active_kind != "issues":
+            self._show_resource("issues")
+        if not self.versions:
+            try:
+                self.versions = list_project_versions(self.client, self.project_key)
+            except Exception:
+                self.versions = []
+        self.timeline_visible = not self.timeline_visible
+        self.board_visible = False
+        self.query_one("#issue_table", IssueTableWidget).display = not self.timeline_visible
+        self.query_one("#issue_board", BoardWidget).display = False
+        self.query_one("#issue_detail", IssueDetailWidget).display = False
+        timeline = self.query_one("#issue_timeline", TimelineWidget)
+        timeline.display = self.timeline_visible
+        if self._timeline_sprints is None:
+            try:
+                if self.client.describe().resource("sprints") and hasattr(self.client, "list_resource"):
+                    self._timeline_sprints = self.client.list_resource("sprints", self.project_key)
+                else:
+                    self._timeline_sprints = []
+            except Exception as error:
+                self._timeline_sprints = []
+                self.notify(f"Could not load sprint timeline: {error}", severity="warning")
+        timeline.update_items(self._timeline_items())
+        timeline.update_markers(self._timeline_markers())
+        timeline.update_sprints(self._timeline_sprints)
+        if self.timeline_visible:
+            timeline.focus_first_epic()
+            self.notify("Timeline view")
+        else:
+            self.query_one("#issue_detail", IssueDetailWidget).display = True
+            self.query_one("#issue_table", IssueTableWidget).focus()
+            self.notify("Table view")
+        self._update_resource_tabs()
+        self._update_issue_actions_bar()
+
+    async def on_timeline_widget_issue_selected(self, event: TimelineWidget.IssueSelected) -> None:
+        """Return from the timeline to the selected issue's normal action view."""
+        item = next(
+            (item for item in self.query_one("#issue_timeline", TimelineWidget).items if item.key == event.key),
+            None,
+        )
+        if item and item.issue_type.casefold() == "milestone" and item.target_url:
+            webbrowser.open(item.target_url)
+            return
+        await self._run_jql_context(f"key = {event.key}", f"Source: timeline -> {event.key}")
+        self._show_resource("issues", board=False)
+        self.notify(f"Issue {event.key}")
 
     async def action_clear_filter(self) -> None:
         """Clear active input and reset filter when needed."""
@@ -400,6 +641,9 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
                 return
             if self.active_kind == "labels":
                 self._show_labels()
+                return
+            if self.client.describe().resource(self.active_kind) and hasattr(self.client, "list_resource"):
+                self._show_provider_resource(self.active_kind)
                 return
             rows = self._run_remote_query()
             self.all_issues = rows

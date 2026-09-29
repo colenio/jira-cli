@@ -8,6 +8,7 @@ from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget
 from jira_cli.tui.features.query.service import QUICK_FILTER_DIMENSIONS, build_query_labels
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget
+from jira_cli.tui.features.resource_table import ProviderResourceDetail, ProviderResourceTable
 
 
 class ViewControllerMixin:
@@ -39,11 +40,18 @@ class ViewControllerMixin:
         """Switch the central content area between resource kinds and issue board mode."""
         self.active_kind = kind
         self.board_visible = kind == "issues" and board
+        self.query_one("#issue_master", object).display = kind == "issues"
         self.query_one("#issue_table", IssueTableWidget).display = kind == "issues" and not board
         self.query_one("#issue_board", BoardWidget).display = kind == "issues" and board
+        self.query_one("#issue_timeline").display = False
+        self.timeline_visible = False
         self.query_one("#user_table", UserTableWidget).display = kind == "users"
         self.query_one("#version_table", VersionTableWidget).display = kind == "versions"
         self.query_one("#label_table", LabelTableWidget).display = kind == "labels"
+        fixed_kinds = {"issues", "users", "versions", "labels"}
+        dynamic_resource = kind not in fixed_kinds and self.client.describe().resource(kind) is not None
+        self.query_one("#provider_resource_table", ProviderResourceTable).display = dynamic_resource
+        self.query_one("#provider_resource_detail", ProviderResourceDetail).display = dynamic_resource
         self.query_one("#issue_detail", IssueDetailWidget).display = kind == "issues"
         self.query_one("#user_detail", UserDetailWidget).display = kind == "users"
         self.query_one("#version_detail", VersionDetailWidget).display = kind == "versions"
@@ -58,16 +66,19 @@ class ViewControllerMixin:
             self.query_one("#user_table", UserTableWidget).focus()
         elif kind == "labels":
             self.query_one("#label_table", LabelTableWidget).focus()
+        elif dynamic_resource:
+            self.query_one("#provider_resource_table", ProviderResourceTable).focus()
         else:
             self.query_one("#version_table", VersionTableWidget).focus()
         self._update_query_context()
         self.refresh_bindings()
         self._update_issue_actions_bar()
+        self._update_resource_tabs()
 
     def _update_issue_actions_bar(self) -> None:
         """Show compact keyboard hints for selected issue actions."""
         toolbar = self.query_one("#issue_actions_bar", object)
-        toolbar.display = self.active_kind == "issues"
+        toolbar.display = self.active_kind == "issues" and not getattr(self, "timeline_visible", False)
         if not toolbar.display:
             return
         hints = []
@@ -75,6 +86,8 @@ class ViewControllerMixin:
             if self.check_action(action, ()):
                 hints.append(f"[bold yellow]{key}[/bold yellow] {label}")
         hints.extend(("[bold yellow]u[/bold yellow] Parent", "[bold yellow]d[/bold yellow] Children"))
+        if getattr(self, "timeline_visible", False):
+            hints.append("[bold yellow]s[/bold yellow] Scale")
         self.query_one("#issue_actions_hint", object).update("  |  ".join(hints))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -107,11 +120,28 @@ class ViewControllerMixin:
             verbs.append("user=")
         elif self.active_kind in {"labels", "versions"}:
             verbs.extend(["edit", "related"])
+        try:
+            verbs.extend(self._provider_resource_kinds())
+        except Exception:
+            pass
         for action in ("create", "edit", "delete"):
             action_name = f"{action}_resource" if action != "edit" else "edit_resource"
             if self.check_action(action_name, ()) and action not in verbs:
                 verbs.append(action)
         return verbs
+
+    def _provider_resource_kinds(self) -> list[str]:
+        """Return provider-declared resources supported by the generic catalog view."""
+        fixed_kinds = {"issues", "users", "versions", "labels"}
+        if not hasattr(self.client, "list_resource"):
+            return []
+        return list(
+            dict.fromkeys(
+                resource.kind
+                for resource in self.client.describe().resources
+                if resource.kind not in fixed_kinds
+            )
+        )
 
     def _restore_active_focus(self, preferred_key: str | None = None) -> None:
         """Return focus to the active main widget."""
@@ -128,6 +158,8 @@ class ViewControllerMixin:
             self.query_one("#label_table", LabelTableWidget).focus()
         elif self.active_kind == "versions":
             self.query_one("#version_table", VersionTableWidget).focus()
+        elif self.client.describe().resource(self.active_kind):
+            self.query_one("#provider_resource_table", ProviderResourceTable).focus()
 
     def _show_query_input(self, placeholder: str, value: str = "") -> None:
         query_input = self.query_one("#query_input", object)
@@ -150,7 +182,8 @@ class ViewControllerMixin:
             "users": "Filter users by name/email; use 'me' for current user",
             "versions": "Filter versions/milestones by name/status/date",
             "labels": "Filter labels by name/description",
-        }[self.active_kind]
+            "sprints": "Filter sprints by name, board, or state (e.g. active)",
+        }.get(self.active_kind, f"Filter {self.active_kind} by name")
         filter_input.disabled = False
         filter_input.display = True
         filter_input.focus()

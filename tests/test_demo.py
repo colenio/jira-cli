@@ -13,6 +13,14 @@ def test_demo_client_searches_and_filters_like_jira_query() -> None:
     assert rows[0].assignee == "Marcel Körtgen"
 
 
+def test_demo_epic_planning_dates_reach_timeline_rows() -> None:
+    rows = JiraQuery(DemoJiraClient()).search_project(DEMO_PROJECT_KEY, max_results=100)
+    epics = {row.key: row for row in rows if row.issue_type == "Epic"}
+
+    assert epics["DEMO-10"].start_date == "2026-08-01"
+    assert epics["DEMO-10"].due_date == "2026-10-31"
+
+
 def test_demo_client_supports_tui_resource_views() -> None:
     client = DemoJiraClient()
 

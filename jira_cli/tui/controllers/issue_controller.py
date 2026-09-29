@@ -71,10 +71,7 @@ class IssueControllerMixin:
         self.pending_issue_key = context.issue_key
         self.input_mode = context.input_mode
         self.query_one("#mode_context", Label).update(context.mode_label)
-        try:
-            assignable = self.client.list_assignable_users(self.project_key, max_results=20)
-        except Exception:
-            assignable = []
+        assignable = self._load_mention_users()
         candidates = ["me"]
         labels = ["me (current user)"]
         for user in assignable:

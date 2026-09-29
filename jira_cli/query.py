@@ -54,6 +54,15 @@ class JiraQuery:
     def __init__(self, client: IssueTrackerProvider):
         self.client = client
 
+    def _start_date_field(self) -> str:
+        """Return a provider-resolved planning start-date field when available."""
+        resolver = getattr(self.client, "start_date_field", None)
+        return resolver() if callable(resolver) else ""
+
+    def _rows(self, issues) -> list[IssueRow]:
+        """Normalize provider issues with the resolved Jira start-date field."""
+        return [IssueRow.from_jira_issue(issue, self._start_date_field()) for issue in issues]
+
     def search_project(
         self,
         project_key: str,
@@ -120,14 +129,19 @@ class JiraQuery:
                 "assignee",
                 "reporter",
                 "updated",
+                "created",
+                "duedate",
                 "description",
                 "labels",
                 "fixVersions",
             ]
 
+        start_date_field = self._start_date_field()
+        if start_date_field and start_date_field not in fields:
+            fields.append(start_date_field)
         result = self.client.search(jql, fields=fields, max_results=max_results)
 
-        return [IssueRow.from_jira_issue(issue) for issue in result.issues]
+        return self._rows(result.issues)
 
     def search_custom_jql(self, jql: str, fields: Optional[list[str]] = None, max_results: int = 50) -> list[IssueRow]:
         """
@@ -152,11 +166,16 @@ class JiraQuery:
                 "priority",
                 "assignee",
                 "updated",
+                "created",
+                "duedate",
                 "labels",
             ]
 
+        start_date_field = self._start_date_field()
+        if start_date_field and start_date_field not in fields:
+            fields.append(start_date_field)
         result = self.client.search(jql, fields=fields, max_results=max_results)
-        return [IssueRow.from_jira_issue(issue) for issue in result.issues]
+        return self._rows(result.issues)
 
     def find_by_text(
         self, project_key: str, text: str, fields: Optional[list[str]] = None, max_results: int = 50
