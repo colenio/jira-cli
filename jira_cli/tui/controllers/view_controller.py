@@ -92,7 +92,7 @@ class ViewControllerMixin:
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Expose only actions that make sense for the active resource and provider."""
-        issue_actions = {"focus_find", "toggle_board", "open_issue", "transition", "assign", "comment", "drill_up", "drill_down"}
+        issue_actions = {"focus_find", "focus_jql", "toggle_board", "open_issue", "transition", "assign", "comment", "drill_up", "drill_down"}
         if action in issue_actions:
             return self.active_kind == "issues"
         if action == "edit_resource":
@@ -115,7 +115,7 @@ class ViewControllerMixin:
         """Return command-palette verbs available in the current resource context."""
         verbs = ["users", "labels", "versions", "clear"]
         if self.active_kind == "issues":
-            verbs.extend(["table", "board", "view", "create", "order=", *(f"{verb}=" for verb in QUICK_FILTER_DIMENSIONS)])
+            verbs.extend(["table", "board", "view", "create", "jql ", "order=", *(f"{verb}=" for verb in QUICK_FILTER_DIMENSIONS)])
         elif self.active_kind == "users":
             verbs.append("user=")
         elif self.active_kind in {"labels", "versions"}:

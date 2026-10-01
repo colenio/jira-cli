@@ -95,7 +95,7 @@ class QueryControllerMixin:
             selected = self.query_one("#label_table", LabelTableWidget).replace_rows(labels)
             self.query_one("#label_detail", LabelDetailWidget).update_label(selected)
             return
-        if self.client.describe().resource(self.active_kind):
+        if self.active_kind in self._provider_resource_kinds():
             fields = self.provider_resource_fields
             rows = [
                 row for row in self.provider_resource_rows

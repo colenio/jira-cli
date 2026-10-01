@@ -130,6 +130,11 @@ class WorkflowControllerMixin:
         self._show_query_input(placeholder)
 
     async def _submit_command(self, expression: str) -> None:
+        head, _, raw_query = expression.strip().partition(" ")
+        if head.lower() == "jql":
+            if not raw_query.strip():
+                self.notify("Usage: jql <query>", severity="warning"); return
+            await self._submit_jql(raw_query.strip()); return
         verb, arg = parse_command(expression)
         if verb in ("table", "issues"):
             self._show_resource("issues", board=False); return
