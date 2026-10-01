@@ -57,6 +57,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
         Binding("p", "reset_source", "Project", show=True),
         Binding("slash", "focus_filter", "Filter", show=True),
         Binding("f", "focus_find", "Find", show=True),
+        Binding("j", "focus_jql", "Query", show=True),
         Binding("colon", "focus_command", "Command", show=True),
         Binding("n", "create_resource", "New", show=True),
         Binding("ctrl+t", "toggle_theme", "Theme", show=True),
@@ -642,7 +643,7 @@ class JiraApp(ResourceActionsMixin, ResourceViewsMixin, IssueControllerMixin, Vi
             if self.active_kind == "labels":
                 self._show_labels()
                 return
-            if self.client.describe().resource(self.active_kind) and hasattr(self.client, "list_resource"):
+            if self.active_kind in self._provider_resource_kinds():
                 self._show_provider_resource(self.active_kind)
                 return
             rows = self._run_remote_query()

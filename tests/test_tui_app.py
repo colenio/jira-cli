@@ -1014,6 +1014,58 @@ async def test_command_bar_switches_views(app):
         assert app.board_visible is False
 
 
+async def test_jql_command_keeps_equals_signs_and_replaces_rows(app):
+    epic = IssueRow(key="A-9", summary="Only epic", issue_type="Epic")
+    async with app.run_test() as pilot:
+        seen_jql = {}
+        app.query.search_custom_jql = lambda jql, fields=None, max_results=50: (
+            seen_jql.setdefault("jql", jql) and [epic]
+        )
+
+        await app._submit_command('jql project = A AND issuetype = "Epic"')
+        await pilot.pause()
+        assert seen_jql["jql"] == 'project = A AND issuetype = "Epic"'
+        assert [issue.key for issue in app.issues] == ["A-9"]
+
+
+async def test_jql_filters_rows_when_provider_declares_issues_resource(sample_issues):
+    class IssuesDescriptorClient(FakeJiraClient):
+        def describe(self) -> ProviderDescriptor:
+            return ProviderDescriptor(
+                name="fake",
+                query_language="JQL",
+                resources=(
+                    ResourceDescriptor(kind="issues", fields=("key", "summary")),
+                    ResourceDescriptor(kind="sprints", fields=("name",)),
+                ),
+            )
+
+        def list_resource(self, kind: str, project_key: str) -> list[dict]:
+            raise AssertionError(f"issue views must not load catalog '{kind}'")
+
+    epic = IssueRow(key="A-9", summary="Only epic", issue_type="Epic")
+    jql_app = JiraApp(IssuesDescriptorClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    jql_app._children_prefetch.prefetch = lambda issue: None
+    jql_app.query.search_custom_jql = lambda jql, fields=None, max_results=50: [epic]
+    async with jql_app.run_test() as pilot:
+        await jql_app._submit_command('jql project = A AND issuetype = "Epic"')
+        await pilot.pause()
+        assert [issue.key for issue in jql_app.issues] == ["A-9"]
+        assert jql_app.query_one("#issue_table").row_count == 1
+
+        await jql_app.action_refresh()
+        await pilot.pause()
+        assert [issue.key for issue in jql_app.issues] == ["A-9"]
+
+
+async def test_j_key_opens_jql_input(app):
+    async with app.run_test() as pilot:
+        await pilot.press("j")
+        await pilot.pause()
+        assert app.input_mode == "jql"
+        assert app.query_one("#query_input").display
+
+
 async def test_overdue_command_runs_expected_jql(app):
     async with app.run_test() as pilot:
         seen_jql = {}
