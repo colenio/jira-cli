@@ -170,6 +170,46 @@ async def test_initial_selection(app):
         assert selected.key == "A-1"
 
 
+async def test_version_rows_use_sprint_closed_and_future_styles(app):
+    async with app.run_test():
+        table = app.query_one("#version_table")
+        table.replace_rows(
+            [
+                {"id": "released", "name": "v1.0", "released": True},
+                {"id": "unreleased", "name": "v2.0", "released": False},
+            ]
+        )
+
+        assert str(table.get_row("released")[0].style) == "dim"
+        assert str(table.get_row("unreleased")[0].style) == "bold cyan"
+
+
+async def test_demo_version_theme_color_refreshes_after_release_change():
+    from jira_cli.demo import DEMO_PROJECT_KEY
+    from jira_cli.providers.demo import DemoProvider
+    from jira_cli.query import JiraQuery
+
+    client = DemoProvider()
+    issues = JiraQuery(client).search_project(DEMO_PROJECT_KEY, max_results=100)
+    demo_app = JiraApp(client, DEMO_PROJECT_KEY, issues, current_user_display_name="Marcel Körtgen")
+    demo_app._children_prefetch.prefetch = lambda issue: None
+
+    async with demo_app.run_test() as pilot:
+        await pilot.pause()
+        table = demo_app.query_one("#version_table")
+        demo_app._show_versions("Versions")
+        await pilot.pause()
+        assert str(table.get_row("demo-v050")[0].style) == "bright_cyan"
+
+        try:
+            client.update_version(DEMO_PROJECT_KEY, "v0.5.0", released=True)
+            demo_app._show_versions("Versions")
+            await pilot.pause()
+            assert str(table.get_row("demo-v050")[0].style) == "dim"
+        finally:
+            client.update_version(DEMO_PROJECT_KEY, "v0.5.0", released=False)
+
+
 async def test_issue_detail_rendering_does_not_fetch_comments(sample_issues):
     client = FakeJiraClient()
     app = JiraApp(client, "A", sample_issues, current_user_display_name="Marcel Körtgen")
@@ -203,7 +243,7 @@ async def test_provider_declared_resource_opens_in_generic_table(sample_issues):
             assert project_key == "A"
             if kind == "components":
                 return [
-                    {"name": "Platform", "lead": "Ada"},
+                    {"name": "Platform", "lead": "Ada", "themeColor": "bright_magenta"},
                     {"name": "Storage", "lead": "Lin"},
                 ]
             return [
@@ -228,6 +268,7 @@ async def test_provider_declared_resource_opens_in_generic_table(sample_issues):
         assert detail.region.x > table.region.x
         assert table.resource_rows[0]["name"] == "Platform"
         assert detail.resource["name"] == "Platform"
+        assert str(table.get_row("Platform")[0].style) == "bright_magenta"
         assert resource_app.query_one("#resource-tab-components").label == "Components"
         resource_app.action_focus_command()
         assert "components" in resource_app.query_one("#query_input").placeholder
@@ -245,6 +286,58 @@ async def test_provider_declared_resource_opens_in_generic_table(sample_issues):
         await resource_app._apply_filter("active")
         assert [row["name"] for row in table.resource_rows] == ["Active Sprint"]
         assert detail.resource["state"] == "active"
+
+
+async def test_provider_resources_navigate_to_issues_or_empty_list(sample_issues):
+    class CatalogClient(FakeJiraClient):
+        def describe(self) -> ProviderDescriptor:
+            return ProviderDescriptor(
+                name="fake",
+                resources=(
+                    ResourceDescriptor(kind="sprints", fields=("name", "state")),
+                    ResourceDescriptor(kind="components", fields=("name",)),
+                ),
+            )
+
+        def list_resource(self, kind: str, project_key: str) -> list[dict]:
+            if kind == "sprints":
+                return [
+                    {"id": 42, "name": "Sprint 42", "state": "active"},
+                    {"id": 43, "name": "Sprint 43", "state": "future"},
+                    {"id": 41, "name": "Sprint 41", "state": "closed"},
+                ]
+            return [{"id": "7", "name": "Platform"}]
+
+        def resource_issue_query(self, kind: str, resource: dict, project_key: str) -> str | None:
+            return f"project = {project_key} AND sprint = {resource['id']}" if kind == "sprints" else None
+
+    sprint_issue = IssueRow(key="A-42", summary="In sprint", issue_type="Story")
+    nav_app = JiraApp(CatalogClient(), "A", sample_issues, current_user_display_name="Marcel Körtgen")
+    nav_app._children_prefetch.prefetch = lambda issue: None
+    seen_jql = []
+    nav_app.query.search_custom_jql = lambda jql, fields=None, max_results=50: seen_jql.append(jql) or [sprint_issue]
+    async with nav_app.run_test() as pilot:
+        await nav_app._submit_command("sprints")
+        await pilot.pause()
+        sprint_table = nav_app.query_one("#provider_resource_table")
+        assert str(sprint_table.get_row("42")[0].style) == "bold green"
+        assert str(sprint_table.get_row("43")[0].style) == "cyan"
+        assert str(sprint_table.get_row("41")[0].style) == "dim"
+        assert nav_app.check_action("issues_for_resource", ())
+        assert "related" in nav_app._command_verbs()
+        await pilot.press("i")
+        await pilot.pause()
+        assert seen_jql == ["project = A AND sprint = 42"]
+        assert nav_app.active_kind == "issues"
+        assert [issue.key for issue in nav_app.issues] == ["A-42"]
+
+        await nav_app._submit_command("components")
+        await pilot.pause()
+        await nav_app._submit_command("related")
+        await pilot.pause()
+        assert seen_jql == ["project = A AND sprint = 42"]
+        assert nav_app.active_kind == "issues"
+        assert nav_app.issues == []
 
 
 async def test_users_versions_and_labels_use_horizontal_master_detail(app):
@@ -360,8 +453,13 @@ async def test_demo_provider_renders_epic_timeline_bars():
         timeline = demo_app.query_one("#issue_timeline")
         table = timeline.query_one("#timeline_table", DataTable)
         row = table.get_row("DEMO-10")
-        assert timeline._unit == "month"
+        assert timeline._unit == "sprint"
         assert any(bool(str(cell)) for cell in row[2:])
+        headers = [str(column.label) for column in table.columns.values()]
+        assert "▶ Sprint 3 (DEMO Scrum)" in headers
+        focus = type(timeline).focus_period_index(timeline._periods)
+        assert timeline._periods[focus].state == "active"
+        assert "bold" in str(row[0].style)
 
 
 async def test_timeline_renders_non_epic_provider_plan_items(sample_issues):
@@ -394,7 +492,7 @@ async def test_timeline_renders_non_epic_provider_plan_items(sample_issues):
         timeline = milestone_app.query_one("#issue_timeline")
         table = timeline.query_one("#timeline_table", DataTable)
         row = table.get_row("repo#M4")
-        assert row[0] == "Milestone repo#M4"
+        assert str(row[0]) == "Milestone repo#M4"
         assert any(bool(str(cell)) for cell in row[2:])
 
 
@@ -436,6 +534,11 @@ async def test_timeline_uses_provider_sprint_intervals(sample_issues):
         assert [period.label for period in timeline._periods] == ["Sprint 2", "Sprint 3"]
         row = timeline.query_one("#timeline_table", DataTable).get_row("A-EPIC")
         assert [bool(str(cell)) for cell in row[2:]] == [True, False]
+        headers = [str(column.label) for column in timeline.query_one("#timeline_table", DataTable).columns.values()]
+        assert headers[2] == "▶ Sprint 2"
+        assert headers[3] == "Sprint 3"
+        assert type(timeline).focus_period_index(timeline._periods) == 0
+        assert "bold" in str(row[0].style)
         timeline.action_cycle_granularity()
         assert timeline._unit == "week"
         timeline.set_granularity("sprint")

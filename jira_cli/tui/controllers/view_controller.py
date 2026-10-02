@@ -104,7 +104,7 @@ class ViewControllerMixin:
         if action == "delete_resource":
             return self.active_kind in {"labels", "versions"} and self._resource_supports_action(self.active_kind, "delete")
         if action == "issues_for_resource":
-            return self.active_kind in {"labels", "versions", "users"}
+            return self.active_kind in {"labels", "versions", "users"} or self.active_kind in self._provider_resource_kinds()
         return True
 
     def _resource_supports_action(self, kind: str, action: str) -> bool:
@@ -120,6 +120,8 @@ class ViewControllerMixin:
             verbs.append("user=")
         elif self.active_kind in {"labels", "versions"}:
             verbs.extend(["edit", "related"])
+        elif self.check_action("issues_for_resource", ()):
+            verbs.append("related")
         try:
             verbs.extend(self._provider_resource_kinds())
         except Exception:

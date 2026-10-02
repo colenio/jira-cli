@@ -1,6 +1,9 @@
 """Label table/detail widgets for the TUI."""
 
+from rich.text import Text
 from textual.widgets import DataTable, Static
+
+from jira_cli.tui.features.theme import label_theme_color
 
 
 class LabelTableWidget(DataTable):
@@ -18,8 +21,9 @@ class LabelTableWidget(DataTable):
 
     def _add_rows(self, labels: list[dict]) -> None:
         for label in labels:
+            color = label_theme_color(label)
             self.add_row(
-                label.get("name", "?"),
+                Text(str(label.get("name", "?")), style=color),
                 str(label.get("issueCount", "") or "-"),
                 label.get("description", "") or "-",
                 key=label.get("name", ""),

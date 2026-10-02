@@ -64,6 +64,9 @@ _DEMO_ISSUES = [
         "description": "Coordinate the dependency update rollout. See [the release checklist](https://example.invalid/checklist).",
         "reporter": "Marcel Körtgen",
         "subtasks": ["DEMO-6", "DEMO-7"],
+        "parent": "DEMO-10",
+        "sprints": [102, 103],
+        "components": ["CLI"],
     },
     {
         "key": "DEMO-2",
@@ -76,6 +79,9 @@ _DEMO_ISSUES = [
         "labels": ["docs"],
         "description": "Document token handling and the supported environment variables.",
         "reporter": "Ada Lovelace",
+        "parent": "DEMO-12",
+        "sprints": [104],
+        "components": ["Docs"],
     },
     {
         "key": "DEMO-3",
@@ -88,6 +94,10 @@ _DEMO_ISSUES = [
         "labels": ["tui", "quality"],
         "description": "Selection must survive refresh and keep the detail pane in sync.",
         "reporter": "Grace Hopper",
+        "parent": "DEMO-10",
+        "sprints": [103],
+        "components": ["TUI"],
+        "fixVersions": ["v0.5.0"],
     },
     {
         "key": "DEMO-4",
@@ -100,6 +110,10 @@ _DEMO_ISSUES = [
         "labels": ["release"],
         "description": "Collect the user-facing changes for the next demo release.",
         "reporter": "Marcel Körtgen",
+        "parent": "DEMO-11",
+        "sprints": [103, 104],
+        "components": ["Docs"],
+        "fixVersions": ["v0.5.0"],
     },
     {
         "key": "DEMO-5",
@@ -112,6 +126,10 @@ _DEMO_ISSUES = [
         "labels": ["docs", "automation"],
         "description": "Publish the generated API reference after the build succeeds.",
         "reporter": "Katherine Johnson",
+        "parent": "DEMO-12",
+        "sprints": [101, 102],
+        "components": ["Docs"],
+        "fixVersions": ["v0.4.0"],
     },
     {
         "key": "DEMO-6",
@@ -149,6 +167,20 @@ _DEMO_USERS = [
 _DEMO_VERSIONS = [
     {"id": "demo-v050", "name": "v0.5.0", "description": "TUI resource views", "releaseDate": "2026-09-12", "released": False, "archived": False},
     {"id": "demo-v040", "name": "v0.4.0", "description": "CLI command groups", "releaseDate": "2026-08-30", "released": True, "archived": False},
+]
+
+_DEMO_SPRINTS = [
+    {"id": 101, "name": "Sprint 1", "state": "closed", "startDate": "2026-08-31", "endDate": "2026-09-13", "completeDate": "2026-09-13", "board": "DEMO Scrum", "goal": "CLI foundation"},
+    {"id": 102, "name": "Sprint 2", "state": "closed", "startDate": "2026-09-14", "endDate": "2026-09-27", "completeDate": "2026-09-27", "board": "DEMO Scrum", "goal": "Docs and automation"},
+    {"id": 103, "name": "Sprint 3", "state": "active", "startDate": "2026-09-28", "endDate": "2026-10-11", "board": "DEMO Scrum", "goal": "TUI stability"},
+    {"id": 104, "name": "Sprint 4", "state": "future", "startDate": "2026-10-12", "endDate": "2026-10-25", "board": "DEMO Scrum", "goal": "Release v0.5.0"},
+    {"id": 105, "name": "Sprint 5", "state": "future", "startDate": "2026-10-26", "endDate": "2026-11-08", "board": "DEMO Scrum", "goal": "Provider expansion"},
+]
+
+_DEMO_COMPONENTS = [
+    {"id": "demo-cli", "name": "CLI", "description": "Command-line interface", "lead": "Marcel Körtgen", "assigneeType": "COMPONENT_LEAD"},
+    {"id": "demo-tui", "name": "TUI", "description": "Terminal user interface", "lead": "Grace Hopper", "assigneeType": "PROJECT_DEFAULT"},
+    {"id": "demo-docs", "name": "Docs", "description": "Documentation site", "lead": "Katherine Johnson", "assigneeType": "PROJECT_DEFAULT"},
 ]
 
 _DEMO_COMMENTS = {
@@ -201,7 +233,10 @@ class DemoJiraClient:
 
     def list_versions(self, project_key: str) -> list[dict]:
         """Return synthetic fix versions/milestones."""
-        return list(_DEMO_VERSIONS)
+        return [
+            {**version, "themeColor": "dim" if version.get("released") else "bright_cyan"}
+            for version in _DEMO_VERSIONS
+        ]
 
     def list_labels(self, project_key: str) -> list[dict]:
         """Return synthetic labels with issue counts."""
@@ -333,6 +368,7 @@ def _to_jira_issue(issue: dict) -> JiraIssue:
             updated=issue["updated"],
             labels=issue["labels"],
             description=issue.get("description"),
+            fixVersions=[{"name": name} for name in issue.get("fixVersions", [])],
             startDate=issue.get("startDate"),
             duedate=issue.get("dueDate"),
             reporter=(
@@ -375,6 +411,12 @@ def _matches(issue: dict, conditions: list[str]) -> bool:
         if field == "priority" and issue["priority"] != value:
             return False
         if field == "labels" and value not in issue["labels"]:
+            return False
+        if field == "fixVersion" and value not in issue.get("fixVersions", []):
+            return False
+        if field == "sprint" and value not in {str(sprint_id) for sprint_id in issue.get("sprints", [])}:
+            return False
+        if field == "component" and value not in issue.get("components", []):
             return False
         if field == "parent" and issue.get("parent") != value:
             return False

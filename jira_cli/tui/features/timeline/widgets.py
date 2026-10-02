@@ -108,7 +108,7 @@ class TimelineWidget(Vertical):
         if sprint_periods and self.granularity in ("auto", "sprint"):
             self._unit = "sprint"
             self._periods = sprint_periods
-            self._period_width = min(28, max(self.BAR_WIDTH, max(len(period.label) for period in sprint_periods)))
+            self._period_width = min(28, max(self.BAR_WIDTH, max(len(period.label) + 2 for period in sprint_periods)))
         else:
             self._unit = self._resolve_granularity_for_items(dated)
             self._periods = self._periods_for(dated, self._unit, [marker.date for marker in self.markers])
@@ -117,17 +117,19 @@ class TimelineWidget(Vertical):
             table = self.query_one("#timeline_table", DataTable)
             table.clear(columns=True)
             self._row_keys = []
-            labels = [period.label for period in self._periods]
             table.add_column("Plan", width=14)
             table.add_column("Title", width=42)
-            for label in labels:
-                table.add_column(label, width=self._period_width)
+            for period in self._periods:
+                table.add_column(self._period_header(period), width=self._period_width)
+            focus_index = self.focus_period_index(self._periods)
+            focus_period = self._periods[focus_index] if focus_index is not None else None
             for index, item in enumerate(self.plan_items):
                 color = self.COLORS[index % len(self.COLORS)]
                 cells = self._bar_cells(item, self._periods, color)
+                row_style = "bold green" if focus_period and self._runs_in(item, focus_period) else ""
                 table.add_row(
-                    f"{item.issue_type or 'Plan'} {item.key}",
-                    item.title,
+                    Text(f"{item.issue_type or 'Plan'} {item.key}", style=row_style),
+                    Text(item.title, style=row_style),
                     *cells,
                     key=item.key,
                 )
@@ -144,7 +146,7 @@ class TimelineWidget(Vertical):
                 self._row_keys.append(self.VERSIONS_ROW_KEY)
             if not self.plan_items:
                 table.add_row("", "No plan items with planning dates", *([""] * len(self._periods)))
-            self._align_today(table, self._periods, self._period_width)
+            self._align_focus(table, self._periods, self._period_width)
             self.query_one("#timeline_scale", Static).update(
                 f"Scale: {self._unit} | s: scale | Enter: open | today: {date.today().isoformat()}"
             )
@@ -221,12 +223,14 @@ class TimelineWidget(Vertical):
     def _bar_cells(self, item: TimelineItem, periods: list[TimelinePeriod], color: str) -> list[Text]:
         cells = []
         for period in periods:
-            if self._unit == "sprint" and item.sprint_ids:
-                active = period.id in item.sprint_ids
-            else:
-                active = item.start is not None and item.end is not None and item.start <= period.end and item.end >= period.start
+            active = self._runs_in(item, period)
             cells.append(Text("=" * self.BAR_WIDTH if active else "", style=color if active else None))
         return cells
+
+    def _runs_in(self, item: TimelineItem, period: TimelinePeriod) -> bool:
+        if self._unit == "sprint" and item.sprint_ids:
+            return period.id in item.sprint_ids
+        return item.start is not None and item.end is not None and item.start <= period.end and item.end >= period.start
 
     def _marker_cells(self, markers: list[TimelineMarker], periods: list[TimelinePeriod]) -> list[Text]:
         cells = []
@@ -254,13 +258,29 @@ class TimelineWidget(Vertical):
         return compact if len(compact) <= width else f"{compact[:width - 1]}…"
 
     @staticmethod
-    def _align_today(table: DataTable, periods: list[TimelinePeriod], period_width: int) -> None:
-        """Scroll the time columns so today's period is visible near the viewport start."""
+    def _period_header(period: TimelinePeriod) -> str | Text:
+        if period.state.casefold() == "active":
+            return Text(f"▶ {period.label}", style="bold reverse green")
+        return period.label
+
+    @staticmethod
+    def focus_period_index(periods: list[TimelinePeriod]) -> int | None:
+        """Prefer the active sprint, otherwise the period containing today."""
+        for index, period in enumerate(periods):
+            if period.state.casefold() == "active":
+                return index
         today = date.today()
         for index, period in enumerate(periods):
             if period.start <= today <= period.end:
-                table.scroll_to(x=max(0, (index - 1) * period_width), animate=False, immediate=True)
-                return
+                return index
+        return None
+
+    @staticmethod
+    def _align_focus(table: DataTable, periods: list[TimelinePeriod], period_width: int) -> None:
+        """Scroll the time columns so the focus period is visible near the viewport start."""
+        index = TimelineWidget.focus_period_index(periods)
+        if index is not None:
+            table.scroll_to(x=max(0, (index - 1) * period_width), animate=False, immediate=True)
 
     @staticmethod
     def _periods_between(first: date, last: date, unit: str) -> list[tuple[str, date]]:

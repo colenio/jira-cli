@@ -42,6 +42,14 @@ class QueryControllerMixin:
         filter_input = self.query_one("#filter_input", Input)
         await self._apply_filter(filter_input.value)
 
+    async def _show_issue_rows(self, rows: list[IssueRow], context_label: str) -> None:
+        """Show a fixed issue set, e.g. an empty result for resources without related issues."""
+        self.all_issues = rows
+        self._show_resource("issues", board=self.board_visible)
+        self._update_query_context()
+        self.query_one("#query_context", object).update(context_label)
+        await self._apply_filter(self.query_one("#filter_input", Input).value)
+
     async def _render_issue_table(self, rows: list[IssueRow], preferred_key: str | None = None) -> None:
         """Render rows into table and board views, keeping selection if possible."""
         table = self.query_one("#issue_table", IssueTableWidget)

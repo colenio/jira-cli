@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from urllib.parse import urlparse
 
 import click
 
@@ -56,6 +57,15 @@ def github_repository_from_context() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def jira_url_problem(base_url: str) -> str | None:
+    """Describe why a configured Jira base URL is unusable, if it is."""
+    parsed = urlparse(base_url)
+    if parsed.scheme in ("http", "https") and parsed.netloc and "=" not in base_url:
+        return None
+    source = "JIRA_URL" if os.environ.get("JIRA_URL") else "JIRA_BASE_URL"
+    return f"invalid {source} {base_url!r}; expected e.g. https://company.atlassian.net (check local.env/.env)"
+
+
 def create_provider(
     context: ProviderContext,
     token_resolver=github_token,
@@ -96,6 +106,9 @@ def create_provider(
             missing.append("JIRA_API_TOKEN")
         if missing:
             raise ValueError(f"Missing: {', '.join(missing)}")
+        url_problem = jira_url_problem(base_url)
+        if url_problem:
+            raise ValueError(url_problem[0].upper() + url_problem[1:])
         return JiraProvider(base_url=base_url, email=email, api_token=api_token)
     raise ValueError(f"Unknown provider context '{context.provider}'")
 
@@ -147,6 +160,9 @@ def validate_context(
         missing.append("JIRA_API_TOKEN")
     if missing:
         return format_validation_failure(context, f"missing {', '.join(missing)}")
+    url_problem = jira_url_problem(base_url)
+    if url_problem:
+        return f"{context.label} configuration error: {url_problem}"
 
     client = JiraProvider(base_url=base_url, email=email, api_token=token)
     try:

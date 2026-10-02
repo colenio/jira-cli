@@ -50,6 +50,20 @@ def test_jira_sprint_listing_skips_boards_without_sprints() -> None:
     ]
 
 
+def test_jira_resource_issue_query_for_components_and_sprints() -> None:
+    from jira_cli.providers.jira import JiraProvider
+
+    provider = JiraProvider.__new__(JiraProvider)
+
+    assert provider.resource_issue_query("components", {"name": 'Say "hi"'}, "TIST") == (
+        'project = TIST AND component = "Say \\"hi\\"" ORDER BY key'
+    )
+    assert provider.resource_issue_query("sprints", {"id": 6072}, "TIST") == (
+        "project = TIST AND sprint = 6072 ORDER BY Rank"
+    )
+    assert provider.resource_issue_query("boards", {"id": 1}, "TIST") is None
+
+
 def test_jira_epic_sprint_assignments_are_derived_from_children() -> None:
     from jira_cli.providers.jira import JiraProvider
 
@@ -285,6 +299,28 @@ def test_jira_validation_reports_missing_token(monkeypatch) -> None:
     assert warning is not None
     assert "missing JIRA_API_TOKEN" in warning
     assert "https://id.atlassian.com/manage-profile/security/api-tokens" in warning
+
+
+def test_jira_validation_reports_malformed_url_without_token_hint(monkeypatch) -> None:
+    monkeypatch.setenv("JIRA_URL", "JIRA_URL=https://example.atlassian.net")
+    monkeypatch.setenv("JIRA_EMAIL", "user@example.com")
+    monkeypatch.setenv("JIRA_API_TOKEN", "token")
+
+    registry = ProviderRegistry(load_env=False)
+    context = registry.resolve_context(provider="jira", project="DEMO")
+
+    warning = registry.validate_context(context)
+    assert warning is not None
+    assert "invalid JIRA_URL 'JIRA_URL=https://example.atlassian.net'" in warning
+    assert "api-tokens" not in warning
+
+
+def test_jira_url_problem_accepts_valid_urls() -> None:
+    from jira_cli.providers.provider_factory import jira_url_problem
+
+    assert jira_url_problem("https://example.atlassian.net") is None
+    assert jira_url_problem("http://jira.local:8080/jira") is None
+    assert jira_url_problem("example.atlassian.net") is not None
 
 
 def test_github_validation_reports_missing_token(monkeypatch) -> None:

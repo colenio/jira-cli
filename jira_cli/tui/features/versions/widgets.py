@@ -1,6 +1,9 @@
 """Version table/detail widgets for the Jira TUI."""
 
+from rich.text import Text
 from textual.widgets import DataTable, Static
+
+from jira_cli.tui.features.theme import normalize_theme_color
 
 
 class VersionTableWidget(DataTable):
@@ -21,10 +24,13 @@ class VersionTableWidget(DataTable):
             state = "released" if version.get("released") else "unreleased"
             if version.get("archived"):
                 state = f"{state}, archived"
+            style = normalize_theme_color(version.get("themeColor")) or (
+                "dim" if version.get("released") else "bold cyan"
+            )
             self.add_row(
-                version.get("name", "?"),
-                state,
-                version.get("releaseDate", "-"),
+                Text(str(version.get("name", "?")), style=style),
+                Text(state, style=style),
+                Text(str(version.get("releaseDate", "-")), style=style),
                 key=version.get("id") or version.get("name", ""),
             )
 

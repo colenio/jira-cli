@@ -268,6 +268,15 @@ class JiraProvider(JiraClient):
             )
         raise ValueError(f"Unsupported Jira resource '{kind}'")
 
+    def resource_issue_query(self, kind: str, resource: dict, project_key: str) -> str | None:
+        """Return JQL for issues in a Jira component or sprint."""
+        if kind == "components" and resource.get("name"):
+            name = str(resource["name"]).replace('"', '\\"')
+            return f'project = {project_key} AND component = "{name}" ORDER BY key'
+        if kind == "sprints" and resource.get("id") is not None:
+            return f"project = {project_key} AND sprint = {int(resource['id'])} ORDER BY Rank"
+        return None
+
     def update_label(
         self, project_key: str, name: str, new_name: str, color: str, description: str = ""
     ) -> dict:

@@ -5,13 +5,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import DataTable, Markdown
 
+from jira_cli.tui.features.theme import normalize_theme_color
+
 
 class ProviderResourceTable(DataTable):
     """Render provider-specific resource records from descriptor fields."""
+
+    STATE_STYLES = {"active": "bold green", "future": "cyan", "closed": "dim"}
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -29,6 +34,14 @@ class ProviderResourceTable(DataTable):
         self.add_columns(*self.fields)
         for index, row in enumerate(rows):
             values = [self._cell_text(row.get(field)) for field in self.fields]
+            state = row.get("state")
+            if state is None and "released" in row:
+                state = "closed" if row["released"] else "future"
+            style = normalize_theme_color(row.get("themeColor")) or self.STATE_STYLES.get(
+                str(state or "").casefold()
+            )
+            if style:
+                values = [Text(value, style=style) for value in values]
             key = str(row.get("id") or row.get("key") or row.get("name") or index)
             self.add_row(*values, key=key)
         if rows:

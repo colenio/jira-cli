@@ -100,6 +100,10 @@ class IssueTrackerProvider(Protocol):
         """Return provider-selected planning items for the timeline view."""
         ...
 
+    def resource_issue_query(self, kind: str, resource: dict, project_key: str) -> str | None:
+        """Return a provider query for issues related to a catalog resource, or None when there are none."""
+        ...
+
     def get_issue_url(self, key: str) -> str:
         """Return the web URL for an issue key."""
         ...

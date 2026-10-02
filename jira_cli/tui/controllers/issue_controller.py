@@ -14,6 +14,7 @@ from jira_cli.tui.features.comment import JiraCommentFeature
 from jira_cli.tui.features.issues import IssueDetailWidget, IssueTableWidget
 from jira_cli.tui.features.issues.modals import CommentModal
 from jira_cli.tui.features.labels import LabelDetailWidget, LabelTableWidget
+from jira_cli.tui.features.resource_table import ProviderResourceTable
 from jira_cli.tui.features.users import UserDetailWidget, UserTableWidget
 from jira_cli.tui.features.users.modals import UserIssuesModal
 from jira_cli.tui.features.versions import VersionDetailWidget, VersionTableWidget
@@ -96,13 +97,33 @@ class IssueControllerMixin:
             resource = self.query_one("#version_table", VersionTableWidget).get_selected_version()
             if resource:
                 name = str(resource.get("name", ""))
-                field = "milestone" if self.context.provider == "github" else "fixVersion"
+                field = "milestone" if self.context.provider in ("github", "gitlab") else "fixVersion"
                 await self._run_jql_context(f'project = {self.project_key} AND {field} = "{name}"', f"Source: issues in {name}")
             return
         if self.active_kind == "users":
             user = self.query_one("#user_table", UserTableWidget).get_selected_user()
             if user:
                 self.push_screen(UserIssuesModal(str(user.get("displayName") or user.get("accountId") or "user")), lambda dimension: self.run_worker(self._show_user_issues(user, dimension), exclusive=True) if dimension else None)
+            return
+        if self.active_kind in self._provider_resource_kinds():
+            await self._show_provider_resource_issues(self.active_kind)
+
+    async def _show_provider_resource_issues(self, kind: str) -> None:
+        table = self.query_one("#provider_resource_table", ProviderResourceTable)
+        rows = table.resource_rows
+        resource = rows[table.cursor_row] if 0 <= table.cursor_row < len(rows) else None
+        if not resource:
+            self.notify(f"No {kind} entry selected", severity="warning"); return
+        name = str(resource.get("name") or resource.get("key") or resource.get("id") or kind)
+        source = f"Source: issues in {kind} {name}"
+        query_builder = getattr(self.client, "resource_issue_query", None)
+        query = query_builder(kind, resource, self.project_key) if callable(query_builder) else None
+        if query:
+            await self._run_jql_context(query, source)
+        else:
+            await self._show_issue_rows([], source)
+        if not self.all_issues:
+            self.notify(f"No issues in {kind} {name}", severity="warning")
 
     async def _show_user_issues(self, user: dict, dimension: str) -> None:
         account = str(user.get("accountId") or user.get("displayName") or "")
